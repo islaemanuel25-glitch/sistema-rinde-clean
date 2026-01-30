@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: rinde-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rinde
+      POSTGRES_PASSWORD: rinde
+      POSTGRES_DB: rinde
+    ports:
+      - "5432:5432"
+    volumes:
+      - rinde_pgdata:/var/lib/postgresql/data
+
+volumes:
+  rinde_pgdata:

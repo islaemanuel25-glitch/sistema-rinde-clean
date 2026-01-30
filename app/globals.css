@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================
+   Base global (app mobile)
+   ========================= */
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Ubuntu, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  /* mobile nicer */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Evita flashes azules al tocar en móvil */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Links por defecto (evita azul feo si aparece algún <a>) */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* iOS safe-area helpers (para barras bottom fijas) */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* =========================
+   Inputs / selects / buttons
+   ========================= */
+
+input,
+select,
+textarea,
+button {
+  @apply text-base;
+}
+
+/* Inputs grandes y claros */
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="email"],
+input[type="password"],
+select,
+textarea {
+  @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2;
+  @apply outline-none focus:border-slate-400;
+}
+
+/* Placeholder más prolijo */
+input::placeholder,
+textarea::placeholder {
+  @apply text-slate-400;
+}
+
+/* Botones base */
+button {
+  @apply rounded-xl border border-slate-300 bg-white px-3 py-2;
+  @apply active:scale-[0.98];
+}
+
+/* Disabled consistente */
+button:disabled {
+  @apply opacity-60;
+}
+
+/* Botón primario (cuando lo uses) */
+.btn-primary {
+  @apply border-transparent bg-slate-900 text-white;
+}
+
+/* Focus visible (para teclado) sin ring gigante */
+:focus-visible {
+  outline: 2px solid rgba(15, 23, 42, 0.25);
+  outline-offset: 2px;
+}
+
+/* =========================
+   Cards (estructura base)
+   ========================= */
+
+.card {
+  @apply rounded-2xl border border-slate-200 bg-white;
+}
+
+.card-header {
+  @apply px-4 pt-4 pb-2 font-semibold;
+}
+
+.card-body {
+  @apply px-4 pb-4;
+}
+
+/* =========================
+   Texto auxiliar
+   ========================= */
+
+.text-muted {
+  @apply text-slate-500;
+}
+
+.text-small {
+  @apply text-sm;
+}
+
+/* =========================
+   Scroll (mobile friendly)
+   ========================= */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

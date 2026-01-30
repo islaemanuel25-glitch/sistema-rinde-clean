@@ -1,0 +1,226 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RolLocal {
+  ADMIN
+  OPERATIVO
+  LECTURA
+}
+
+enum ScopePreset {
+  GLOBAL
+  LOCAL
+}
+
+enum TipoMovimiento {
+  ENTRADA
+  SALIDA
+}
+
+enum Turno {
+  MANIANA
+  TARDE
+  NOCHE
+}
+
+enum CategoriaAccion {
+  TURNO
+  DEPOSITO
+  ELECTRONICO
+  SOCIO
+  OTROS
+}
+
+enum PresetItemTipo {
+  ACCION
+  CATEGORIA
+  SOCIO
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  locales     UserLocal[]
+  movimientos Movimiento[] @relation("MovimientosCreadosPor")
+  sessions    Session[] // Paso 1: sesiones
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Local {
+  id        String   @id @default(cuid())
+  nombre    String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarios      UserLocal[]
+  accionesLocal AccionLocal[]
+  presets       Preset[]
+  socios        Socio[]
+  movimientos   Movimiento[]
+
+  @@map("locales")
+}
+
+model UserLocal {
+  id       String   @id @default(cuid())
+  userId   String
+  localId  String
+  rol      RolLocal
+  isActive Boolean  @default(true)
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  local Local @relation(fields: [localId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, localId])
+  @@index([localId])
+  @@map("user_locales")
+}
+
+model Accion {
+  id                      String          @id @default(cuid())
+  nombre                  String
+  descripcion             String?
+  tipoDefault             TipoMovimiento
+  impactaTotalDefault     Boolean         @default(true)
+  usaTurno                Boolean         @default(false)
+  usaNombre               Boolean         @default(false)
+  requierePermisoEspecial Boolean         @default(false)
+  categoria               CategoriaAccion @default(OTROS)
+  isActive                Boolean         @default(true)
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  locales     AccionLocal[]
+  movimientos Movimiento[]
+  presetItems PresetItem[] // relación inversa
+
+  @@unique([nombre])
+  @@map("acciones")
+}
+
+model AccionLocal {
+  id        String  @id @default(cuid())
+  localId   String
+  accionId  String
+  isEnabled Boolean @default(true)
+  orden     Int     @default(0)
+
+  // Overrides opcionales (si es null, se usa el valor de Accion)
+  tipoOverride      TipoMovimiento?
+  impactaTotal      Boolean         @default(true)
+  impactaTotalDesde DateTime        @default(now())
+
+  usaTurnoOverride  Boolean?
+  usaNombreOverride Boolean?
+
+  updatedAt DateTime @updatedAt
+
+  local  Local  @relation(fields: [localId], references: [id], onDelete: Cascade)
+  accion Accion @relation(fields: [accionId], references: [id], onDelete: Cascade)
+
+  @@unique([localId, accionId])
+  @@index([localId, isEnabled, orden])
+  @@map("acciones_local")
+}
+
+model Preset {
+  id        String      @id @default(cuid())
+  scope     ScopePreset
+  localId   String?
+  nombre    String
+  orden     Int         @default(0)
+  isActive  Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  local Local?       @relation(fields: [localId], references: [id], onDelete: Cascade)
+  items PresetItem[]
+
+  @@index([scope, localId, orden])
+  @@map("presets")
+}
+
+model PresetItem {
+  id        String           @id @default(cuid())
+  presetId  String
+  tipo      PresetItemTipo
+  accionId  String?
+  categoria CategoriaAccion?
+  socioId   String?
+  orden     Int              @default(0)
+
+  preset Preset  @relation(fields: [presetId], references: [id], onDelete: Cascade)
+  accion Accion? @relation(fields: [accionId], references: [id], onDelete: Cascade)
+  socio  Socio?  @relation(fields: [socioId], references: [id], onDelete: Cascade)
+
+  @@index([presetId, orden])
+  @@map("preset_items")
+}
+
+model Socio {
+  id       String  @id @default(cuid())
+  localId  String
+  nombre   String
+  isActive Boolean @default(true)
+
+  local       Local        @relation(fields: [localId], references: [id], onDelete: Cascade)
+  movimientos Movimiento[]
+  presetItems PresetItem[] // relación inversa
+
+  @@unique([localId, nombre])
+  @@index([localId])
+  @@map("socios")
+}
+
+model Movimiento {
+  id       String         @id @default(cuid())
+  localId  String
+  fecha    DateTime // usar solo la parte de fecha (sin hora) a nivel app
+  accionId String
+  tipo     TipoMovimiento
+  importe  Decimal // Prisma 7: sin @db.Numeric
+
+  turno   Turno?
+  nombre  String?
+  socioId String?
+
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  local     Local  @relation(fields: [localId], references: [id], onDelete: Cascade)
+  accion    Accion @relation(fields: [accionId], references: [id], onDelete: Restrict)
+  socio     Socio? @relation(fields: [socioId], references: [id], onDelete: SetNull)
+  creadoPor User   @relation("MovimientosCreadosPor", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([localId, fecha])
+  @@index([localId, fecha, accionId])
+  @@map("movimientos")
+}
