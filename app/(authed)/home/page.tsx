@@ -200,6 +200,15 @@ export default async function HomePage() {
               badge="Config"
             />
           )}
+
+          {active?.rol === "ADMIN" && (
+            <MenuCard
+              title="Usuarios"
+              desc="Crear usuarios y asignar locales."
+              href="/admin/config/usuarios"
+              badge="Config"
+            />
+          )}
         </div>
 
         {needPickLocal && (
