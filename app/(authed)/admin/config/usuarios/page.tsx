@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { requireAuth } from "@/src/auth/requireAuth";
 import { prisma } from "@/src/lib/db";
 import { getActiveLocalId } from "@/src/auth/localSession";
@@ -24,7 +27,6 @@ export default async function AdminConfigUsuariosPage(props: {
 
   if (!activeLocalId) redirect("/home");
 
-  // ADMIN del local activo (mismo patrón que presets/acciones/locales)
   const userLocal = await prisma.userLocal.findFirst({
     where: {
       userId: user.id,
@@ -58,12 +60,10 @@ export default async function AdminConfigUsuariosPage(props: {
     orderBy: { nombre: "asc" },
   });
 
-  // Listado simple de usuarios (control)
   const users = await prisma.user.findMany({
-    where: { isActive: true },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-    select: { id: true, email: true, createdAt: true },
+    orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+    take: 200,
+    select: { id: true, email: true, isActive: true, createdAt: true },
   });
 
   return (
@@ -73,7 +73,7 @@ export default async function AdminConfigUsuariosPage(props: {
           Config · Usuarios
         </div>
         <div className="mt-1 text-sm font-medium text-slate-600">
-          Crear usuarios y asignar locales
+          Crear, editar y eliminar usuarios
         </div>
       </div>
 
@@ -94,14 +94,17 @@ export default async function AdminConfigUsuariosPage(props: {
           const localIds = formData.getAll("localIds").map((v) => String(v));
 
           if (!nombre || !email || !password || localIds.length === 0) {
-            redirect("/admin/config/usuarios?error=" + encodeURIComponent("Completá nombre, email, contraseña y al menos 1 local."));
+            redirect(
+              "/admin/config/usuarios?error=" +
+                encodeURIComponent("Completá nombre, email, contraseña y al menos 1 local.")
+            );
           }
 
           const res = await fetch(`${getBaseUrl()}/api/admin/usuarios`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              cookie: getCookieHeader(), // ✅ crucial para leer rinde_local en la API
+              cookie: getCookieHeader(),
             },
             body: JSON.stringify({ nombre, email, password, localIds }),
             cache: "no-store",
@@ -124,7 +127,7 @@ export default async function AdminConfigUsuariosPage(props: {
           <label className="text-sm font-semibold text-slate-900">Nombre</label>
           <input
             name="nombre"
-            placeholder="Nombre"
+            placeholder="Nombre (no se guarda todavía)"
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium"
           />
         </div>
@@ -149,11 +152,13 @@ export default async function AdminConfigUsuariosPage(props: {
             placeholder="••••••••"
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium"
           />
+          <div className="text-xs font-medium text-slate-500">
+            La contraseña debe tener al menos 6 caracteres.
+          </div>
         </div>
 
         <div className="space-y-2">
           <div className="text-sm font-semibold text-slate-900">Locales</div>
-
           <div className="space-y-2">
             {locales.map((l) => (
               <label
@@ -162,17 +167,11 @@ export default async function AdminConfigUsuariosPage(props: {
               >
                 <input type="checkbox" name="localIds" value={l.id} />
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-extrabold text-slate-900">
-                    {l.nombre}
-                  </div>
+                  <div className="truncate text-sm font-extrabold text-slate-900">{l.nombre}</div>
                   <div className="text-xs font-medium text-slate-500">ID: {l.id}</div>
                 </div>
               </label>
             ))}
-          </div>
-
-          <div className="text-xs font-medium text-slate-500">
-            El usuario verá solo los locales asignados.
           </div>
         </div>
 
@@ -186,15 +185,72 @@ export default async function AdminConfigUsuariosPage(props: {
 
       {/* Listado */}
       <div className="pt-1">
-        <div className="mb-2 text-sm font-extrabold text-slate-900">Últimos usuarios</div>
+        <div className="mb-2 text-sm font-extrabold text-slate-900">Usuarios</div>
+
         <div className="space-y-2">
           {users.map((u) => (
             <div
               key={u.id}
               className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
             >
+              <div className="mb-2">
+                <span
+                  className={
+                    "inline-block rounded-xl px-3 py-1 text-xs font-extrabold " +
+                    (u.isActive
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-50 text-slate-700 border border-slate-200")
+                  }
+                >
+                  {u.isActive ? "Activo" : "Inactivo"}
+                </span>
+              </div>
+
               <div className="truncate text-sm font-extrabold text-slate-900">{u.email}</div>
               <div className="mt-1 text-xs font-medium text-slate-500">ID: {u.id}</div>
+
+              <div className="mt-3 flex gap-2">
+                <a
+                  href={`/admin/config/usuarios/${encodeURIComponent(u.id)}`}
+                  className="inline-block rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-900 shadow-sm"
+                >
+                  Editar
+                </a>
+
+                {!u.isActive && (
+                  <form
+                    action={async () => {
+                      "use server";
+
+                      const baseUrl = getBaseUrl();
+                      const res = await fetch(
+                        `${baseUrl}/api/admin/usuarios/${encodeURIComponent(u.id)}/reactivar`,
+                        {
+                          method: "POST",
+                          headers: { cookie: getCookieHeader() },
+                          cache: "no-store",
+                        }
+                      );
+
+                      if (!res.ok) {
+                        redirect(
+                          "/admin/config/usuarios?error=" +
+                            encodeURIComponent("No se pudo reactivar el usuario")
+                        );
+                      }
+
+                      redirect("/admin/config/usuarios");
+                    }}
+                  >
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-emerald-700 px-3 py-2 text-xs font-extrabold text-white shadow-sm"
+                    >
+                      Reactivar
+                    </button>
+                  </form>
+                )}
+              </div>
             </div>
           ))}
         </div>

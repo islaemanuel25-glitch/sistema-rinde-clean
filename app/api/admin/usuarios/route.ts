@@ -57,11 +57,11 @@ export default async function AdminConfigUsuariosPage(props: {
     orderBy: { nombre: "asc" },
   });
 
+  // ✅ Traigo activos e inactivos
   const users = await prisma.user.findMany({
-    where: { isActive: true },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    select: { id: true, email: true, createdAt: true },
+    orderBy: [{ isActive: "desc" }, { createdAt: "desc" }],
+    take: 80,
+    select: { id: true, email: true, isActive: true, createdAt: true },
   });
 
   return (
@@ -71,7 +71,7 @@ export default async function AdminConfigUsuariosPage(props: {
           Config · Usuarios
         </div>
         <div className="mt-1 text-sm font-medium text-slate-600">
-          Crear, editar y eliminar usuarios
+          Crear, editar, eliminar y reactivar usuarios
         </div>
       </div>
 
@@ -188,17 +188,67 @@ export default async function AdminConfigUsuariosPage(props: {
 
         <div className="space-y-2">
           {users.map((u) => (
-            <div key={u.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="truncate text-sm font-extrabold text-slate-900">{u.email}</div>
-              <div className="mt-1 text-xs font-medium text-slate-500">ID: {u.id}</div>
+            <div
+              key={u.id}
+              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-extrabold text-slate-900">{u.email}</div>
+                  <div className="mt-1 text-xs font-medium text-slate-500">ID: {u.id}</div>
+                </div>
 
-              <div className="mt-3">
+                <div
+                  className={
+                    "shrink-0 rounded-xl px-3 py-2 text-xs font-extrabold " +
+                    (u.isActive
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-50 text-slate-700 border border-slate-200")
+                  }
+                >
+                  {u.isActive ? "Activo" : "Inactivo"}
+                </div>
+              </div>
+
+              <div className="mt-3 flex gap-2">
                 <a
                   href={`/admin/config/usuarios/${encodeURIComponent(u.id)}`}
                   className="inline-block rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-extrabold text-slate-900 shadow-sm"
                 >
                   Editar
                 </a>
+
+                {!u.isActive ? (
+                  <form
+                    action={async () => {
+                      "use server";
+
+                      const res = await fetch(
+                        `${getBaseUrl()}/api/admin/usuarios/${encodeURIComponent(u.id)}/reactivar`,
+                        {
+                          method: "POST",
+                          headers: { cookie: getCookieHeader() },
+                          cache: "no-store",
+                        }
+                      );
+
+                      const data = await res.json().catch(() => null);
+                      if (!res.ok) {
+                        const msg = data?.error ?? "No se pudo reactivar";
+                        redirect("/admin/config/usuarios?error=" + encodeURIComponent(msg));
+                      }
+
+                      redirect("/admin/config/usuarios");
+                    }}
+                  >
+                    <button
+                      type="submit"
+                      className="inline-block rounded-xl bg-emerald-700 px-3 py-2 text-xs font-extrabold text-white shadow-sm"
+                    >
+                      Reactivar
+                    </button>
+                  </form>
+                ) : null}
               </div>
             </div>
           ))}
