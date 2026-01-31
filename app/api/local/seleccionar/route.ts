@@ -9,11 +9,25 @@ const BodySchema = z.object({ localId: IdSchema });
 
 async function authorizeAndSet(userId: string, localId: string) {
   const current = getActiveLocalId();
+
+  // Si quiere cambiar de local y ya hay uno activo, solo lo permitimos si es ADMIN del local actual
   if (current && current !== localId) {
-    return NextResponse.json(
-      { ok: false, error: "No podés cambiar de local sin cerrar sesión" },
-      { status: 409 }
-    );
+    const currentRole = await prisma.userLocal.findFirst({
+      where: {
+        userId,
+        localId: current,
+        isActive: true,
+        local: { isActive: true },
+      },
+      select: { rol: true },
+    });
+
+    if (!currentRole || currentRole.rol !== "ADMIN") {
+      return NextResponse.json(
+        { ok: false, error: "No podés cambiar de local sin cerrar sesión" },
+        { status: 409 }
+      );
+    }
   }
 
   const allowed = await prisma.userLocal.findFirst({

@@ -191,6 +191,15 @@ export default async function HomePage() {
             disabled={needPickLocal}
             badge="Config"
           />
+
+          {active?.rol === "ADMIN" && (
+            <MenuCard
+              title="Locales"
+              desc="Administrar locales del sistema."
+              href="/admin/config/locales"
+              badge="Config"
+            />
+          )}
         </div>
 
         {needPickLocal && (
