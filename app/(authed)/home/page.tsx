@@ -160,6 +160,14 @@ export default async function HomePage() {
         <div className="mb-2 text-sm font-extrabold text-slate-900">Menú</div>
 
         <div className="space-y-2">
+        <MenuCard
+  title="Dashboard"
+  desc="Tendencia semana a semana y mes a mes."
+  href={active ? `/local/${active.id}/dashboard` : undefined}
+  disabled={needPickLocal}
+  badge="Operación"
+/>
+
           <MenuCard
             title="Hoja"
             desc="Cargar y ver movimientos (día/semana/mes)."

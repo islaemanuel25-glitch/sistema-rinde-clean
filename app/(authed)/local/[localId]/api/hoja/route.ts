@@ -20,36 +20,52 @@ function toISODate(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
+/** Semana negocio: Domingo (día 1) -> Sábado (día 7). End exclusivo: domingo siguiente. */
+function startOfWeekSunday(base: Date) {
+  const d = new Date(base);
+  const day = d.getDay(); // 0=Dom
+  d.setDate(d.getDate() - day); // vuelve al domingo
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Mes negocio: desde el primer domingo del mes. */
+function firstSundayOfMonth(year: number, month0: number) {
+  const d = new Date(year, month0, 1);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0=Dom
+  const add = (7 - day) % 7; // si ya es domingo, 0
+  d.setDate(d.getDate() + add);
+  return d;
+}
+
 function startEndForScope(scope: Scope, isoDate: string) {
   const base = new Date(`${isoDate}T00:00:00`);
-  const start = new Date(base);
-  const end = new Date(base);
 
   if (scope === "day") {
+    const start = new Date(base);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
     end.setDate(end.getDate() + 1);
     return { start, end };
   }
 
   if (scope === "week") {
-    const day = start.getDay(); // 0=Dom
-    const diffToMonday = (day + 6) % 7; // Lunes=0
-    start.setDate(start.getDate() - diffToMonday);
-    end.setTime(start.getTime());
-    end.setDate(end.getDate() + 7);
+    const start = startOfWeekSunday(base); // domingo
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7); // domingo siguiente (exclusivo)
     return { start, end };
   }
 
-  // month
-  start.setDate(1);
-  end.setMonth(start.getMonth() + 1);
-  end.setDate(1);
+  // month: desde primer domingo del mes hasta primer domingo del mes siguiente
+  const y = base.getFullYear();
+  const m = base.getMonth();
+  const start = firstSundayOfMonth(y, m);
+  const end = firstSundayOfMonth(m === 11 ? y + 1 : y, (m + 1) % 12);
   return { start, end };
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { localId: string } }
-) {
+export async function GET(req: NextRequest, { params }: { params: { localId: string } }) {
   const gate = await requireLocalContextApi(params.localId);
   if (!gate.ok) return gate.res;
   const { localId } = gate.ctx;
@@ -182,10 +198,7 @@ export async function GET(
   });
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { localId: string } }
-) {
+export async function POST(req: NextRequest, { params }: { params: { localId: string } }) {
   const gate = await requireLocalContextApi(params.localId);
   if (!gate.ok) return gate.res;
   const { localId, userId, rol } = gate.ctx;
@@ -262,10 +275,14 @@ export async function POST(
 
   for (const al of accionesLocal) {
     accionIdsHabilitadas.add(al.accionId);
-    tipoByAccionId.set(al.accionId, (al.tipoOverride ?? al.accion.tipoDefault) as "ENTRADA" | "SALIDA");
+    tipoByAccionId.set(
+      al.accionId,
+      (al.tipoOverride ?? al.accion.tipoDefault) as "ENTRADA" | "SALIDA"
+    );
   }
 
   // Primera acción SOCIO habilitada (si existe)
+  // (OJO: esto lo vamos a eliminar cuando migremos SOCIO a reparto automático)
   let socioAccionId: string | null = null;
   for (const al of accionesLocal) {
     if (al.accion.categoria === "SOCIO") {

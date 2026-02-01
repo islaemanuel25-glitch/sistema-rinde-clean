@@ -86,6 +86,9 @@ model Local {
   socios        Socio[]
   movimientos   Movimiento[]
 
+  // NUEVO: configuración de reparto con socio (por local)
+  socioConfig SocioConfig?
+
   @@map("locales")
 }
 
@@ -217,10 +220,26 @@ model Movimiento {
 
   local     Local  @relation(fields: [localId], references: [id], onDelete: Cascade)
   accion    Accion @relation(fields: [accionId], references: [id], onDelete: Restrict)
-  socio     Socio? @relation(fields: [socioId], references: [id], onDelete: SetNull)
+  socio     Socio?  @relation(fields: [socioId], references: [id], onDelete: SetNull)
   creadoPor User   @relation("MovimientosCreadosPor", fields: [createdByUserId], references: [id], onDelete: Restrict)
 
   @@index([localId, fecha])
   @@index([localId, fecha, accionId])
   @@map("movimientos")
+}
+
+//
+// NUEVO: Configuración de reparto del socio por local
+// pctSocio se guarda 0..1 (0.5=50%). En UI/API lo manejamos como 50..100.
+//
+model SocioConfig {
+  id        String   @id @default(cuid())
+  localId   String   @unique
+  isEnabled Boolean  @default(false)
+  pctSocio  Decimal  @default(0)
+  updatedAt DateTime @updatedAt
+
+  local Local @relation(fields: [localId], references: [id], onDelete: Cascade)
+
+  @@map("socio_config")
 }
