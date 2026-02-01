@@ -4,7 +4,7 @@ import { requireLocalContextApi } from "@/app/lib/rinde/requireLocalContext";
 import { z } from "zod";
 import { IdSchema } from "@/src/domain/zod";
 
-const CategoriaSchema = z.enum(["TURNO", "DEPOSITO", "ELECTRONICO", "SOCIO", "OTROS"]);
+const CategoriaSchema = z.enum(["TURNO", "DEPOSITO", "ELECTRONICO", "OTROS"]); // SOCIO eliminado
 
 // Acepta DOS formatos:
 // 1) Nuevo: { tipo: "CATEGORIA", categoria: "TURNO" }
@@ -69,6 +69,15 @@ export async function POST(
   if (!parsed.success) {
     return NextResponse.json(
       { ok: false, error: "Datos inválidos" },
+      { status: 400 }
+    );
+  }
+
+  // Bloquear SOCIO (solo reparto automático en dashboard)
+  const rawCategoria = (body?.categoria ?? body?.tipo ?? "").toString().trim().toUpperCase();
+  if (rawCategoria === "SOCIO") {
+    return NextResponse.json(
+      { ok: false, error: "SOCIO_DISABLED" },
       { status: 400 }
     );
   }

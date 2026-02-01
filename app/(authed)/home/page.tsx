@@ -194,7 +194,7 @@ export default async function HomePage() {
 
           <MenuCard
             title="Socios"
-            desc="Administrar socios del local (para movimientos SOCIO)."
+            desc="Administrar socios del local (para reparto automático en dashboard)."
             href={active ? `/local/${active.id}/socios` : undefined}
             disabled={needPickLocal}
             badge="Config"

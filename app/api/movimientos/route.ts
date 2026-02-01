@@ -37,9 +37,14 @@ export async function POST(req: NextRequest) {
   // Acción habilitada en el local
   const accionLocal = await prisma.acciones_local.findFirst({
     where: { localId, accionId, isEnabled: true },
-    select: { id: true },
+    include: { accion: { select: { categoria: true } } },
   });
   if (!accionLocal) return NextResponse.json({ error: "ACCION_NOT_ENABLED" }, { status: 403 });
+
+  // Bloquear movimientos SOCIO (solo reparto automático en dashboard)
+  if (accionLocal.accion.categoria === "SOCIO") {
+    return NextResponse.json({ error: "SOCIO_DISABLED" }, { status: 403 });
+  }
 
   const created = await prisma.movimientos.create({
     data: {

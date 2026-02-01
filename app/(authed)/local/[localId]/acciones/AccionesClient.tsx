@@ -144,8 +144,8 @@ export default function AccionesClient({ localId }: { localId: string }) {
       list.sort((a, b) => (a.orden - b.orden) || a.nombre.localeCompare(b.nombre));
       map.set(k, list);
     }
-    // orden de categorías fijo si querés
-    const order = ["TURNO", "DEPOSITO", "ELECTRONICO", "SOCIO", "OTROS"];
+    // orden de categorías fijo si querés (SOCIO eliminado)
+    const order = ["TURNO", "DEPOSITO", "ELECTRONICO", "OTROS"];
     const cats = Array.from(map.keys()).sort((a, b) => {
       const ia = order.indexOf(a);
       const ib = order.indexOf(b);

@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 type ScopePreset = "GLOBAL" | "LOCAL";
-type PresetItemTipo = "ACCION" | "CATEGORIA" | "SOCIO";
-type CategoriaAccion = "TURNO" | "DEPOSITO" | "ELECTRONICO" | "SOCIO" | "OTROS";
+type PresetItemTipo = "ACCION" | "CATEGORIA"; // SOCIO eliminado
+type CategoriaAccion = "TURNO" | "DEPOSITO" | "ELECTRONICO" | "OTROS"; // SOCIO eliminado
 
 type PresetRow = {
   id: string;
@@ -487,18 +487,16 @@ function AddItemBox({
     if (disabled) return;
 
     if (tipo === "ACCION" && !accionId.trim()) return;
-    if (tipo === "SOCIO" && !socioId.trim()) return;
 
     onAdd({
       tipo,
       accionId: tipo === "ACCION" ? accionId.trim() : null,
       categoria: tipo === "CATEGORIA" ? categoria : null,
-      socioId: tipo === "SOCIO" ? socioId.trim() : null,
+      socioId: null, // SOCIO deshabilitado
       orden,
     });
 
     setAccionId("");
-    setSocioId("");
     setTipo("ACCION");
   }
 
@@ -517,7 +515,6 @@ function AddItemBox({
           >
             <option value="ACCION">ACCION</option>
             <option value="CATEGORIA">CATEGORIA</option>
-            <option value="SOCIO">SOCIO</option>
           </select>
         </label>
 
@@ -546,24 +543,11 @@ function AddItemBox({
               <option value="TURNO">TURNO</option>
               <option value="DEPOSITO">DEPOSITO</option>
               <option value="ELECTRONICO">ELECTRONICO</option>
-              <option value="SOCIO">SOCIO</option>
               <option value="OTROS">OTROS</option>
             </select>
           </label>
         ) : null}
 
-        {tipo === "SOCIO" ? (
-          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ fontSize: 12, opacity: 0.7 }}>socioId</span>
-            <input
-              value={socioId}
-              disabled={disabled}
-              onChange={(e) => setSocioId(e.target.value)}
-              placeholder="Pegá socioId"
-              style={{ padding: 10, borderRadius: 10, border: "1px solid rgba(0,0,0,0.2)", minWidth: 220 }}
-            />
-          </label>
-        ) : null}
 
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 12, opacity: 0.7 }}>orden</span>

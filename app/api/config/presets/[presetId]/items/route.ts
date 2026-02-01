@@ -10,9 +10,9 @@ const QuerySchema = z.object({
 
 const CreateItemSchema = z.object({
   localId: z.string().min(1),
-  tipo: z.enum(["ACCION", "CATEGORIA", "SOCIO"]),
+  tipo: z.enum(["ACCION", "CATEGORIA"]), // SOCIO eliminado
   accionId: z.string().min(1).optional(),
-  categoria: z.enum(["TURNO", "DEPOSITO", "ELECTRONICO", "SOCIO", "OTROS"]).optional(),
+  categoria: z.enum(["TURNO", "DEPOSITO", "ELECTRONICO", "OTROS"]).optional(), // SOCIO eliminado
   socioId: z.string().min(1).optional(),
   orden: z.number().int().min(0).optional(),
 });
@@ -22,9 +22,9 @@ const PatchItemSchema = z.object({
   itemId: z.string().min(1),
   orden: z.number().int().min(0).optional(),
   // permitir cambiar payload
-  tipo: z.enum(["ACCION", "CATEGORIA", "SOCIO"]).optional(),
+  tipo: z.enum(["ACCION", "CATEGORIA"]).optional(), // SOCIO eliminado
   accionId: z.string().nullable().optional(),
-  categoria: z.enum(["TURNO", "DEPOSITO", "ELECTRONICO", "SOCIO", "OTROS"]).nullable().optional(),
+  categoria: z.enum(["TURNO", "DEPOSITO", "ELECTRONICO", "OTROS"]).nullable().optional(), // SOCIO eliminado
   socioId: z.string().nullable().optional(),
 });
 
@@ -80,15 +80,20 @@ export async function POST(req: NextRequest, { params }: { params: { presetId: s
   const ok = await assertEditableLocalPreset(params.presetId, localId);
   if (!ok) return NextResponse.json({ ok: false, error: "PRESET_NOT_EDITABLE" }, { status: 403 });
 
+  // Bloquear SOCIO (solo reparto automático en dashboard)
+  if (parsed.data.tipo === "SOCIO") {
+    return NextResponse.json({ ok: false, error: "SOCIO_DISABLED" }, { status: 400 });
+  }
+  if (parsed.data.categoria === "SOCIO") {
+    return NextResponse.json({ ok: false, error: "SOCIO_DISABLED" }, { status: 400 });
+  }
+
   // Validación mínima por tipo (sin inventar reglas extra)
   if (parsed.data.tipo === "ACCION" && !parsed.data.accionId) {
     return NextResponse.json({ ok: false, error: "MISSING_ACCION" }, { status: 400 });
   }
   if (parsed.data.tipo === "CATEGORIA" && !parsed.data.categoria) {
     return NextResponse.json({ ok: false, error: "MISSING_CATEGORIA" }, { status: 400 });
-  }
-  if (parsed.data.tipo === "SOCIO" && !parsed.data.socioId) {
-    return NextResponse.json({ ok: false, error: "MISSING_SOCIO" }, { status: 400 });
   }
 
   const created = await prisma.presetItem.create({

@@ -50,12 +50,11 @@ async function main() {
     },
   });
 
-  // Acciones base mínimas
+  // Acciones base mínimas (SOCIO eliminado - solo reparto automático en dashboard)
   const accionesBase = [
     { nombre: "Caja turno", tipoDefault: TipoMovimiento.ENTRADA, categoria: CategoriaAccion.TURNO },
     { nombre: "Pago depósito", tipoDefault: TipoMovimiento.SALIDA, categoria: CategoriaAccion.DEPOSITO },
     { nombre: "Electrónico", tipoDefault: TipoMovimiento.ENTRADA, categoria: CategoriaAccion.ELECTRONICO },
-    { nombre: "Socio", tipoDefault: TipoMovimiento.SALIDA, categoria: CategoriaAccion.SOCIO },
     { nombre: "Otros", tipoDefault: TipoMovimiento.SALIDA, categoria: CategoriaAccion.OTROS },
   ];
 

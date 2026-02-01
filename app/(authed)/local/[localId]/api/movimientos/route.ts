@@ -65,13 +65,18 @@ export async function POST(req: Request, { params }: { params: { localId: string
     return NextResponse.json({ ok: false, error: "Acción no habilitada en este local" }, { status: 403 });
   }
 
+  // Bloquear movimientos SOCIO (solo reparto automático en dashboard)
+  const categoria = accionLocal.accion.categoria;
+  if (categoria === "SOCIO") {
+    return NextResponse.json({ ok: false, error: "SOCIO_DISABLED" }, { status: 403 });
+  }
+
   // Tipo real del movimiento (obligatorio en Movimiento.tipo)
   const tipo = accionLocal.tipoOverride ?? accionLocal.accion.tipoDefault;
 
   // Reglas de campos condicionales
   const usaTurno = accionLocal.usaTurnoOverride ?? accionLocal.accion.usaTurno;
   const usaNombre = accionLocal.usaNombreOverride ?? accionLocal.accion.usaNombre;
-  const categoria = accionLocal.accion.categoria; // SOCIO etc
 
   if (usaTurno && !turno) {
     return NextResponse.json({ ok: false, error: "Falta turno" }, { status: 400 });
@@ -84,19 +89,6 @@ export async function POST(req: Request, { params }: { params: { localId: string
     return NextResponse.json({ ok: false, error: "Falta nombre" }, { status: 400 });
   }
 
-  if (categoria === "SOCIO") {
-    if (!socioId) {
-      return NextResponse.json({ ok: false, error: "Falta socio" }, { status: 400 });
-    }
-    const socioOk = await prisma.socio.findFirst({
-      where: { id: socioId, localId, isActive: true },
-      select: { id: true },
-    });
-    if (!socioOk) {
-      return NextResponse.json({ ok: false, error: "Socio inválido" }, { status: 400 });
-    }
-  }
-
   const created = await prisma.movimiento.create({
     data: {
       localId,
@@ -106,7 +98,7 @@ export async function POST(req: Request, { params }: { params: { localId: string
       importe, // Decimal: Prisma acepta string
       turno: usaTurno ? turno! : null,
       nombre: usaNombre ? (nombre?.trim() ?? null) : null,
-      socioId: categoria === "SOCIO" ? socioId! : null,
+      socioId: null, // SOCIO deshabilitado
       createdByUserId: userId,
     },
     select: { id: true },

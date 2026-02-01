@@ -55,7 +55,6 @@ export default function MovimientoModal(props: {
   const [importe, setImporte] = useState<string>("");
   const [turno, setTurno] = useState<"MANIANA" | "TARDE" | "NOCHE" | "">("");
   const [nombre, setNombre] = useState<string>("");
-  const [socioId, setSocioId] = useState<string>("");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,11 +91,10 @@ export default function MovimientoModal(props: {
     // reset
     setError(null);
     setFecha(suggestedDate);
-    setAccionId("");
-    setImporte("");
-    setTurno("");
-    setNombre("");
-    setSocioId("");
+      setAccionId("");
+      setImporte("");
+      setTurno("");
+      setNombre("");
 
     fetchAcciones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,10 +148,6 @@ export default function MovimientoModal(props: {
         setError("Falta nombre");
         return;
       }
-      if (accion?.categoria === "SOCIO" && !socioId.trim()) {
-        setError("Falta socio");
-        return;
-      }
 
       const payload: any = {
         fecha: fechaFinal,
@@ -162,7 +156,6 @@ export default function MovimientoModal(props: {
       };
       if (accion?.usaTurno) payload.turno = turno;
       if (accion?.usaNombre) payload.nombre = nombre.trim();
-      if (accion?.categoria === "SOCIO") payload.socioId = socioId.trim();
 
       const res = await fetch(`/local/${localId}/api/movimientos`, {
         method: "POST",
@@ -263,12 +256,6 @@ export default function MovimientoModal(props: {
             {accion?.usaNombre && (
               <Field label="Nombre">
                 <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" />
-              </Field>
-            )}
-
-            {accion?.categoria === "SOCIO" && (
-              <Field label="Socio" hint="ID por ahora">
-                <input value={socioId} onChange={(e) => setSocioId(e.target.value)} placeholder="socioId" />
               </Field>
             )}
 

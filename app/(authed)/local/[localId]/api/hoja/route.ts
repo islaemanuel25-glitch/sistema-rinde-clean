@@ -281,16 +281,6 @@ export async function POST(req: NextRequest, { params }: { params: { localId: st
     );
   }
 
-  // Primera acción SOCIO habilitada (si existe)
-  // (OJO: esto lo vamos a eliminar cuando migremos SOCIO a reparto automático)
-  let socioAccionId: string | null = null;
-  for (const al of accionesLocal) {
-    if (al.accion.categoria === "SOCIO") {
-      socioAccionId = al.accionId;
-      break;
-    }
-  }
-
   // Targets deduplicados por key `${accionId}::${socioId||""}`
   type Target = { accionId: string; socioId: string | null };
   const targets = new Map<string, Target>();
@@ -305,6 +295,8 @@ export async function POST(req: NextRequest, { params }: { params: { localId: st
     }
 
     if (item.tipo === "CATEGORIA" && item.categoria) {
+      // Ignorar categoría SOCIO (bloqueada)
+      if (item.categoria === "SOCIO") continue;
       for (const al of accionesLocal) {
         if (al.accion.categoria === item.categoria) {
           const key = `${al.accionId}::`;
@@ -314,12 +306,7 @@ export async function POST(req: NextRequest, { params }: { params: { localId: st
       continue;
     }
 
-    if (item.tipo === "SOCIO" && item.socioId) {
-      if (!socioAccionId) continue; // si no hay acción SOCIO, no falla
-      const key = `${socioAccionId}::${item.socioId}`;
-      if (!targets.has(key)) targets.set(key, { accionId: socioAccionId, socioId: item.socioId });
-      continue;
-    }
+    // SOCIO eliminado: ya no se procesan items tipo SOCIO
   }
 
   if (targets.size === 0) {
