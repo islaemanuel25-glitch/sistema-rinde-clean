@@ -8,7 +8,7 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es" className="h-full">
-      <body className="min-h-full bg-slate-50 text-slate-900 antialiased">
+      <body className="theme-neon min-h-full antialiased">
         {/* App Shell (mobile-first) */}
         <div className="min-h-screen">
           {/* Centered mobile container */}

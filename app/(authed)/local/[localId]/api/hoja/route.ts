@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/src/lib/db";
 import { requireLocalContextApi } from "@/app/lib/rinde/requireLocalContext";
 
-type Scope = "day" | "week" | "month" | "all";
+type Scope = "day" | "week" | "month" | "monthcal" | "all";
 
 function parseScope(v: string | null): Scope {
-  if (v === "day" || v === "week" || v === "month" || v === "all") return v;
+  if (v === "day" || v === "week" || v === "month" || v === "monthcal" || v === "all") return v;
   return "day";
 }
 
@@ -57,7 +57,18 @@ function startEndForScope(scope: Scope, isoDate: string) {
     return { start, end };
   }
 
-  // month: desde primer domingo del mes hasta primer domingo del mes siguiente
+  if (scope === "monthcal") {
+    // Mes calendario: 1 -> primer día del mes siguiente (end exclusivo)
+    const y = base.getFullYear();
+    const m = base.getMonth();
+    const start = new Date(y, m, 1);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(y, m + 1, 1);
+    end.setHours(0, 0, 0, 0);
+    return { start, end };
+  }
+
+  // month negocio: desde primer domingo del mes hasta primer domingo del mes siguiente
   const y = base.getFullYear();
   const m = base.getMonth();
   const start = firstSundayOfMonth(y, m);
@@ -74,7 +85,7 @@ export async function GET(req: NextRequest, { params }: { params: { localId: str
   const scope = parseScope(url.searchParams.get("scope"));
   const dateParam = url.searchParams.get("date"); // YYYY-MM-DD
 
-  // Para day/week/month exigimos date válida.
+  // Para day/week/month/monthcal exigimos date válida.
   if (scope !== "all") {
     if (!dateParam || !isISODate(dateParam)) {
       return NextResponse.json({ ok: false, error: "DATE_REQUIRED" }, { status: 400 });
@@ -297,6 +308,7 @@ export async function POST(req: NextRequest, { params }: { params: { localId: st
     if (item.tipo === "CATEGORIA" && item.categoria) {
       // Ignorar categoría SOCIO (bloqueada)
       if (item.categoria === "SOCIO") continue;
+
       for (const al of accionesLocal) {
         if (al.accion.categoria === item.categoria) {
           const key = `${al.accionId}::`;

@@ -7,7 +7,18 @@
    ========================= */
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+}
+
+.theme-neon {
+  --bg: #0a0a0f;
+  --surface: #1a1a2e;
+  --text: #e0e0e0;
+  --muted: #888888;
+  --border: #333344;
+  --primary: #00ff88;
+  --primaryText: #000000;
+  --focus: rgba(0, 255, 136, 0.4);
 }
 
 html,
@@ -16,7 +27,8 @@ body {
 }
 
 body {
-  @apply bg-slate-50 text-slate-900;
+  background-color: var(--bg, #0a0a0f);
+  color: var(--text, #e0e0e0);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     Ubuntu, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
 
@@ -60,20 +72,36 @@ input[type="email"],
 input[type="password"],
 select,
 textarea {
-  @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2;
-  @apply outline-none focus:border-slate-400;
+  @apply w-full rounded-xl px-3 py-2;
+  border: 1px solid var(--border, #333344);
+  background-color: var(--surface, #1a1a2e);
+  color: var(--text, #e0e0e0);
+  outline: none;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--primary, #00ff88);
 }
 
 /* Placeholder más prolijo */
 input::placeholder,
 textarea::placeholder {
-  @apply text-slate-400;
+  color: var(--muted, #888888);
 }
 
 /* Botones base */
 button {
-  @apply rounded-xl border border-slate-300 bg-white px-3 py-2;
+  @apply rounded-xl px-3 py-2;
   @apply active:scale-[0.98];
+  border: 1px solid var(--border, #333344);
+  background-color: var(--surface, #1a1a2e);
+  color: var(--text, #e0e0e0);
 }
 
 /* Disabled consistente */
@@ -83,12 +111,14 @@ button:disabled {
 
 /* Botón primario (cuando lo uses) */
 .btn-primary {
-  @apply border-transparent bg-slate-900 text-white;
+  border-color: transparent;
+  background-color: var(--primary, #00ff88);
+  color: var(--primaryText, #000000);
 }
 
 /* Focus visible (para teclado) sin ring gigante */
 :focus-visible {
-  outline: 2px solid rgba(15, 23, 42, 0.25);
+  outline: 2px solid var(--focus, rgba(0, 255, 136, 0.4));
   outline-offset: 2px;
 }
 
@@ -97,7 +127,9 @@ button:disabled {
    ========================= */
 
 .card {
-  @apply rounded-2xl border border-slate-200 bg-white;
+  @apply rounded-2xl;
+  border: 1px solid var(--border, #333344);
+  background-color: var(--surface, #1a1a2e);
 }
 
 .card-header {
@@ -113,7 +145,7 @@ button:disabled {
    ========================= */
 
 .text-muted {
-  @apply text-slate-500;
+  color: var(--muted, #888888);
 }
 
 .text-small {
@@ -130,10 +162,41 @@ button:disabled {
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15);
+  background-color: var(--border, #333344);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* =========================
+   THEME COMPAT (Tailwind hardcode)
+   - Convierte clases viejas "blancas/slate"
+     a la paleta del theme sin refactor
+   ========================= */
+
+.theme-neon .bg-white {
+  background-color: var(--surface) !important;
+}
+
+.theme-neon .border-slate-200,
+.theme-neon .border-slate-300 {
+  border-color: var(--border) !important;
+}
+
+.theme-neon .text-slate-900 {
+  color: var(--text) !important;
+}
+
+.theme-neon .text-slate-700,
+.theme-neon .text-slate-600,
+.theme-neon .text-slate-500,
+.theme-neon .text-slate-400 {
+  color: var(--muted) !important;
+}
+
+.theme-neon .bg-slate-50,
+.theme-neon .bg-slate-100 {
+  background-color: var(--bg) !important;
 }

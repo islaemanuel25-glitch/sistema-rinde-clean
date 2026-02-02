@@ -72,7 +72,7 @@ export default function MovimientoModal(props: {
   async function fetchAcciones() {
     setLoadingAcciones(true);
     try {
-      const res = await fetch(`/local/${localId}/api/acciones`, { cache: "no-store" });
+      const res = await fetch(`/local/${localId}/api/acciones-hoja`, { cache: "no-store" });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
         setAcciones([]);
@@ -128,14 +128,19 @@ export default function MovimientoModal(props: {
         setError("Elegí una acción");
         return;
       }
-      if (!importe || Number(importe) <= 0) {
-        setError("Importe inválido");
-        return;
-      }
 
       const fechaFinal = selectedDate ?? fecha;
       if (!fechaFinal) {
         setError("Falta fecha");
+        return;
+      }
+
+      // Normalización y validación de importe
+      const importeNorm = importe.trim().replace(/\./g, "").replace(",", ".");
+      const importeNum = Number(importeNorm);
+
+      if (!Number.isFinite(importeNum) || importeNum <= 0) {
+        setError("Importe inválido");
         return;
       }
 
@@ -152,7 +157,7 @@ export default function MovimientoModal(props: {
       const payload: any = {
         fecha: fechaFinal,
         accionId,
-        importe,
+        importe: importeNorm,
       };
       if (accion?.usaTurno) payload.turno = turno;
       if (accion?.usaNombre) payload.nombre = nombre.trim();
@@ -232,15 +237,20 @@ export default function MovimientoModal(props: {
                 ))}
               </select>
             </Field>
-
-            <Field label="Importe">
-              <input
-                value={importe}
-                onChange={(e) => setImporte(e.target.value)}
-                placeholder="0"
-                inputMode="decimal"
-              />
-            </Field>
+            <Field label="Importe" hint="Ej: 15000 o 15.000,50">
+  <input
+    type="text"
+    inputMode="decimal"
+    value={importe}
+    onChange={(e) => {
+      const v = e.target.value.replace(/[^\d.,]/g, "");
+      setImporte(v);
+    }}
+    placeholder="0"
+    className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+    disabled={saving}
+  />
+</Field>
 
             {accion?.usaTurno && (
               <Field label="Turno">

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import MovimientoModal from "./MovimientoModal";
+import DiaModal from "./DiaModal";
 
-type Scope = "day" | "week" | "month" | "all";
+type Scope = "day" | "week" | "month" | "monthcal" | "all";
 
 type DayGroup = {
   date: string;
@@ -28,7 +28,6 @@ type DayGroup = {
 
 type AccionUI = { id: string; nombre: string };
 type PresetUI = { id: string; nombre: string; scope: "GLOBAL" | "LOCAL" };
-
 type FilterValue = "ALL" | `PRESET:${string}` | `ACCION:${string}`;
 
 function cn(...parts: Array<string | false | null | undefined>) {
@@ -43,6 +42,19 @@ function money(v: number) {
 function parseNumber(s: string) {
   const n = Number(s);
   return isFinite(n) ? n : 0;
+}
+
+function startOfWeekSundayIso(iso: string) {
+  const d = new Date(`${iso}T00:00:00`);
+  const day = d.getDay(); // 0=Dom
+  d.setDate(d.getDate() - day);
+  return d.toISOString().slice(0, 10);
+}
+
+function addDaysIso(iso: string, days: number) {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 function applyFilterToDays(days: DayGroup[], allowedAccionIds: Set<string> | null) {
@@ -107,7 +119,8 @@ function Segmented(props: { value: Scope; onChange: (v: Scope) => void }) {
   const items: Array<{ v: Scope; label: string }> = [
     { v: "day", label: "Día" },
     { v: "week", label: "Semana" },
-    { v: "month", label: "Mes" },
+    { v: "month", label: "Mes (semanas)" },
+    { v: "monthcal", label: "Mes calendario" },
     { v: "all", label: "Todo" },
   ];
 
@@ -132,6 +145,45 @@ function Segmented(props: { value: Scope; onChange: (v: Scope) => void }) {
   );
 }
 
+type WeekBlock = {
+  start: string; // domingo
+  end: string;   // sábado
+  days: DayGroup[];
+  resumen: { e: number; s: number; n: number; i: number };
+};
+
+function groupWeeks(days: DayGroup[]): WeekBlock[] {
+  // days viene desc (más nuevo arriba). Para agrupar, orden asc.
+  const asc = [...days].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const map = new Map<string, DayGroup[]>();
+
+  for (const d of asc) {
+    const ws = startOfWeekSundayIso(d.date);
+    if (!map.has(ws)) map.set(ws, []);
+    map.get(ws)!.push(d);
+  }
+
+  const blocks: WeekBlock[] = [];
+  for (const [ws, list] of map.entries()) {
+    const start = ws;
+    const end = addDaysIso(ws, 6);
+
+    let e = 0, s = 0, n = 0, i = 0;
+    for (const d of list) {
+      e += d.resumen.totalEntradas;
+      s += d.resumen.totalSalidas;
+      n += d.resumen.totalNeto;
+      i += d.resumen.totalImpacta;
+    }
+
+    blocks.push({ start, end, days: list, resumen: { e, s, n, i } });
+  }
+
+  // más nueva arriba
+  blocks.sort((a, b) => (a.start < b.start ? 1 : -1));
+  return blocks;
+}
+
 export default function LocalHojaClient({ localId }: { localId: string }) {
   const [scope, setScope] = useState<Scope>("day");
   const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
@@ -142,21 +194,20 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [open, setOpen] = useState(false);
-
   const [filter, setFilter] = useState<FilterValue>("ALL");
   const [acciones, setAcciones] = useState<AccionUI[]>([]);
   const [presets, setPresets] = useState<PresetUI[]>([]);
   const [presetAllowedAccionIds, setPresetAllowedAccionIds] = useState<Set<string> | null>(null);
 
-  const [lastAppliedKey, setLastAppliedKey] = useState<string | null>(null);
-
-  // Opción B: aplicar preset solo cuando lo elige el usuario (no por persistencia inicial)
   const [hydrated, setHydrated] = useState(false);
   const [userPickedPresetKey, setUserPickedPresetKey] = useState<string | null>(null);
+  const [lastAppliedKey, setLastAppliedKey] = useState<string | null>(null);
 
-  // UX: ocultar ceros por defecto (presets)
   const [hideZero, setHideZero] = useState(true);
+
+  // Modal día
+  const [openDay, setOpenDay] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<string>(date);
 
   useEffect(() => {
     const s = localStorage.getItem("rinde_scope") as Scope | null;
@@ -173,21 +224,10 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
     setHydrated(true);
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("rinde_scope", scope);
-  }, [scope]);
-
-  useEffect(() => {
-    localStorage.setItem("rinde_date", date);
-  }, [date]);
-
-  useEffect(() => {
-    localStorage.setItem("rinde_filter", filter);
-  }, [filter]);
-
-  useEffect(() => {
-    localStorage.setItem("rinde_hide_zero", hideZero ? "1" : "0");
-  }, [hideZero]);
+  useEffect(() => localStorage.setItem("rinde_scope", scope), [scope]);
+  useEffect(() => localStorage.setItem("rinde_date", date), [date]);
+  useEffect(() => localStorage.setItem("rinde_filter", filter), [filter]);
+  useEffect(() => localStorage.setItem("rinde_hide_zero", hideZero ? "1" : "0"), [hideZero]);
 
   async function fetchHoja() {
     setLoading(true);
@@ -219,7 +259,8 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
   }
 
   async function fetchFiltros() {
-    const aRes = await fetch(`/local/${localId}/api/acciones`, { cache: "no-store" });
+    // Usar acciones-hoja (lectura)
+    const aRes = await fetch(`/local/${localId}/api/acciones-hoja`, { cache: "no-store" });
     const aJson = await aRes.json().catch(() => null);
     if (aRes.ok && aJson?.ok) setAcciones((aJson.acciones ?? []).map((x: any) => ({ id: x.id, nombre: x.nombre })));
     else setAcciones([]);
@@ -287,12 +328,8 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
           setLastAppliedKey(key);
           setHideZero(true);
           fetchHoja();
-        } else {
-          console.warn("No se pudo aplicar preset:", json?.error);
         }
-      } catch (e) {
-        console.warn("Error al aplicar preset:", e);
-      }
+      } catch {}
     }
 
     applyPreset();
@@ -347,16 +384,14 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
 
   const headerLabel = useMemo(() => {
     if (scope === "day") return `Día ${date}`;
-    if (scope === "week") return `Semana (base) ${date}`;
-    if (scope === "month") return `Mes (base) ${date}`;
+    if (scope === "week") return `Semana (Dom→Sáb) base ${date}`;
+    if (scope === "month") return `Mes (negocio) base ${date}`;
+    if (scope === "monthcal") return `Mes calendario base ${date}`;
     return "Todo";
   }, [scope, date]);
 
   const topSummary = useMemo(() => {
-    let e = 0,
-      s = 0,
-      n = 0,
-      i = 0;
+    let e = 0, s = 0, n = 0, i = 0;
     for (const d of visibleDays) {
       e += d.resumen.totalEntradas;
       s += d.resumen.totalSalidas;
@@ -365,6 +400,16 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
     }
     return { e, s, n, i };
   }, [visibleDays]);
+
+  const weeks = useMemo(() => {
+    if (scope === "day") return null;
+    return groupWeeks(visibleDays);
+  }, [visibleDays, scope]);
+
+  function openDia(iso: string) {
+    setSelectedDay(iso);
+    setOpenDay(true);
+  }
 
   return (
     <div className="space-y-3 pb-28">
@@ -390,11 +435,11 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
       {/* Tabs */}
       <Segmented value={scope} onChange={setScope} />
 
-      {/* Date picker (solo day) */}
-      {scope === "day" && (
+      {/* Date picker base (no all) */}
+      {scope !== "all" && (
         <Card>
           <div className="px-4 pt-4 pb-3">
-            <div className="text-sm font-semibold text-slate-900">Fecha</div>
+            <div className="text-sm font-semibold text-slate-900">Fecha base</div>
             {lastMovimientoDate && <div className="mt-0.5 text-xs text-slate-500">Último movimiento: {lastMovimientoDate}</div>}
           </div>
           <div className="px-4 pb-4">
@@ -439,8 +484,8 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
       {/* Filtro */}
       <Card>
         <div className="px-4 pt-4 pb-3">
-          <div className="text-sm font-semibold text-slate-900">Filtro</div>
-          <div className="mt-0.5 text-xs text-slate-500">Preset, acción o todo</div>
+          <div className="text-sm font-semibold text-slate-900">Ver</div>
+          <div className="mt-0.5 text-xs text-slate-500">Todo, por plantilla o por acción</div>
         </div>
 
         <div className="px-4 pb-4 space-y-3">
@@ -460,7 +505,7 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
           >
             <option value="ALL">Todo</option>
 
-            {presets.length > 0 && <option disabled>— Presets —</option>}
+            {presets.length > 0 && <option disabled>— Plantillas —</option>}
             {presets.map((p) => (
               <option key={p.id} value={`PRESET:${p.id}`}>
                 {p.nombre}
@@ -475,21 +520,15 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
             ))}
           </select>
 
-          <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <input
-                type="checkbox"
-                checked={hideZero}
-                onChange={(e) => setHideZero(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300"
-              />
-              Ocultar importes 0
-            </label>
-
-            <button className="btn-primary border-0 px-4 py-2 font-semibold shadow-sm" onClick={() => setOpen(true)}>
-              + Cargar
-            </button>
-          </div>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={hideZero}
+              onChange={(e) => setHideZero(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Ocultar movimientos de $0 (plantillas)
+          </label>
 
           {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800">{error}</div>}
         </div>
@@ -503,80 +542,137 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
           </div>
         )}
 
-        {visibleDays.map((d) => (
-          <Card key={d.date}>
+        {/* DAY: lista como antes */}
+        {scope === "day" &&
+          visibleDays.map((d) => (
+            <Card key={d.date}>
+              <button
+                className="w-full text-left"
+                onClick={() => openDia(d.date)}
+              >
+                <div className="px-4 pt-4 pb-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-base font-extrabold text-slate-900">{d.date}</div>
+                    <Chip variant="soft">Neto {money(d.resumen.totalNeto)}</Chip>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span>Entradas: {money(d.resumen.totalEntradas)}</span>
+                    <span>•</span>
+                    <span>Salidas: {money(d.resumen.totalSalidas)}</span>
+                    <span>•</span>
+                    <span>Impacta: {money(d.resumen.totalImpacta)}</span>
+                  </div>
+                  <div className="mt-2 text-xs font-semibold text-slate-600">Tocá para cargar/editar el día</div>
+                </div>
+              </button>
+
+              <div className="px-4 pb-4 space-y-2">
+                {d.movimientos.map((m) => {
+                  const imp = parseNumber(m.importe);
+                  const isIn = m.tipo === "ENTRADA";
+
+                  return (
+                    <div key={m.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-[15px] font-extrabold text-slate-900">{m.accionNombre}</div>
+
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Chip variant={isIn ? "in" : "out"}>{isIn ? "ENTRADA" : "SALIDA"}</Chip>
+                            <Chip variant="neutral">{m.impactaTotal ? "Impacta" : "No impacta"}</Chip>
+                            {m.turno && <Chip variant="neutral">{m.turno}</Chip>}
+                            {m.nombre && <Chip variant="neutral">{m.nombre}</Chip>}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className={cn("text-2xl font-extrabold", isIn ? "text-emerald-700" : "text-rose-700")}>
+                            {isIn ? "+" : "-"}
+                            {money(imp)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          ))}
+
+        {/* WEEK/MONTH/MONTHCAL/ALL: agrupar por semanas */}
+        {scope !== "day" && weeks && weeks.map((w) => (
+          <Card key={w.start}>
             <div className="px-4 pt-4 pb-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-base font-extrabold text-slate-900">{d.date}</div>
-                <Chip variant="soft">Neto {money(d.resumen.totalNeto)}</Chip>
+                <div className="text-base font-extrabold text-slate-900">
+                  Semana {w.start} → {w.end}
+                </div>
+                <Chip variant="soft">Impacta {money(w.resumen.i)}</Chip>
               </div>
               <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-                <span>Entradas: {money(d.resumen.totalEntradas)}</span>
+                <span>Entradas: {money(w.resumen.e)}</span>
                 <span>•</span>
-                <span>Salidas: {money(d.resumen.totalSalidas)}</span>
+                <span>Salidas: {money(w.resumen.s)}</span>
                 <span>•</span>
-                <span>Impacta: {money(d.resumen.totalImpacta)}</span>
+                <span>Neto: {money(w.resumen.n)}</span>
               </div>
             </div>
 
             <div className="px-4 pb-4 space-y-2">
-              {d.movimientos.map((m) => {
-                const imp = parseNumber(m.importe);
-                const isIn = m.tipo === "ENTRADA";
-
-                return (
-                  <div key={m.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-[15px] font-extrabold text-slate-900">{m.accionNombre}</div>
-
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <Chip variant={isIn ? "in" : "out"}>{isIn ? "ENTRADA" : "SALIDA"}</Chip>
-                          <Chip variant="neutral">{m.impactaTotal ? "Impacta" : "No impacta"}</Chip>
-                          {m.turno && <Chip variant="neutral">{m.turno}</Chip>}
-                          {m.nombre && <Chip variant="neutral">{m.nombre}</Chip>}
-                          {m.socio && <Chip variant="neutral">Socio: {m.socio}</Chip>}
+              {w.days
+                .sort((a, b) => (a.date < b.date ? -1 : 1))
+                .map((d) => (
+                  <button
+                    key={d.date}
+                    onClick={() => openDia(d.date)}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-extrabold text-slate-900">{d.date}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          Entradas {money(d.resumen.totalEntradas)} · Salidas {money(d.resumen.totalSalidas)}
                         </div>
                       </div>
-
                       <div className="text-right">
-                        <div className={cn("text-2xl font-extrabold", isIn ? "text-emerald-700" : "text-rose-700")}>
-                          {isIn ? "+" : "-"}
-                          {money(imp)}
-                        </div>
-                        {hideZero && imp === 0 && <div className="mt-0.5 text-[11px] font-medium text-slate-500">preset</div>}
+                        <div className="text-lg font-extrabold text-slate-900">{money(d.resumen.totalImpacta)}</div>
+                        <div className="text-[11px] font-semibold text-slate-600">Tocar para cargar</div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  </button>
+                ))}
             </div>
           </Card>
         ))}
       </div>
 
-      {/* CTA fijo abajo (siempre accesible) */}
-      <div className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto w-full max-w-md px-3 py-3">
-          <button className="btn-primary w-full border-0 py-3 text-base font-extrabold shadow-sm" onClick={() => setOpen(true)}>
-            + Cargar movimiento
-          </button>
-        </div>
-      </div>
-
-      <MovimientoModal
-        open={open}
-        onClose={() => setOpen(false)}
+      {/* Modal día */}
+      <DiaModal
+        open={openDay}
+        onClose={() => setOpenDay(false)}
         localId={localId}
-        scope={scope}
-        selectedDate={scope === "day" ? date : null}
-        lastMovimientoDate={lastMovimientoDate}
-        onCreated={() => {
-          setOpen(false);
+        dateIso={selectedDay}
+        onSaved={() => {
+          setOpenDay(false);
           fetchHoja();
           fetchFiltros();
         }}
       />
+
+      {/* Botón fijo CTA abajo */}
+      <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur safe-bottom">
+        <div className="mx-auto w-full max-w-md px-3 py-3">
+          <button
+            onClick={() => {
+              setSelectedDay(date);
+              setOpenDay(true);
+            }}
+            className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-base font-extrabold text-white shadow-sm active:scale-[0.98]"
+          >
+            Cargar datos del día
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
