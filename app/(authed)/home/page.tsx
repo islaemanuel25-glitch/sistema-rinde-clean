@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { requireAuth } from "@/src/auth/requireAuth";
 import { prisma } from "@/src/lib/db";
 import { getActiveLocalId } from "@/src/auth/localSession";
+import LocalPickerClient from "./LocalPickerClient";
 
 async function getLocalesForUser(userId: string) {
   const rows = await prisma.userLocal.findMany({
@@ -122,51 +123,20 @@ export default async function HomePage() {
       </div>
 
       {/* Selector de local (siempre) */}
-      <div className="space-y-2">
-        {locales.map((l) => {
-          const isActive = activeLocalId === l.id;
-
-          return (
-            <a
-              key={l.id}
-              href={`/api/local/seleccionar?localId=${encodeURIComponent(l.id)}&next=${encodeURIComponent("/home")}`}
-              className={cn(
-                "block rounded-2xl border bg-white p-4 shadow-sm active:scale-[0.99]",
-                isActive ? "border-slate-900" : "border-slate-200"
-              )}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-base font-extrabold text-slate-900">{l.nombre}</div>
-                  <div className="mt-1 text-xs font-medium text-slate-500">ID: {l.id}</div>
-                </div>
-
-                <div
-                  className={cn(
-                    "shrink-0 rounded-xl px-3 py-2 text-xs font-extrabold",
-                    isActive ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-700 border border-slate-200"
-                  )}
-                >
-                  {isActive ? "Activo" : "Usar"}
-                </div>
-              </div>
-            </a>
-          );
-        })}
-      </div>
+      <LocalPickerClient locales={locales} activeLocalId={activeLocalId} />
 
       {/* Menú */}
       <div className="pt-1">
         <div className="mb-2 text-sm font-extrabold text-slate-900">Menú</div>
 
         <div className="space-y-2">
-        <MenuCard
-  title="Dashboard"
-  desc="Tendencia semana a semana y mes a mes."
-  href={active ? `/local/${active.id}/dashboard` : undefined}
-  disabled={needPickLocal}
-  badge="Operación"
-/>
+          <MenuCard
+            title="Dashboard"
+            desc="Tendencia semana a semana y mes a mes."
+            href={active ? `/local/${active.id}/dashboard` : undefined}
+            disabled={needPickLocal}
+            badge="Operación"
+          />
 
           <MenuCard
             title="Hoja"

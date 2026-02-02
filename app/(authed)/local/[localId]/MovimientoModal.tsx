@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Scope = "day" | "week" | "month" | "all";
 
@@ -59,6 +59,8 @@ export default function MovimientoModal(props: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const importeRef = useRef<HTMLInputElement | null>(null);
+
   const pideFecha = !selectedDate && (scope === "week" || scope === "month" || scope === "all");
 
   const suggestedDate = useMemo(() => {
@@ -91,14 +93,34 @@ export default function MovimientoModal(props: {
     // reset
     setError(null);
     setFecha(suggestedDate);
-      setAccionId("");
-      setImporte("");
-      setTurno("");
-      setNombre("");
+    setAccionId("");
+    setImporte("");
+    setTurno("");
+    setNombre("");
 
     fetchAcciones();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, suggestedDate]);
+
+  // Foco al abrir
+  useEffect(() => {
+    if (!open) return;
+    setTimeout(() => {
+      importeRef.current?.focus();
+    }, 80);
+  }, [open]);
+
+  // Si la acción usa turno, reforzar foco al importe (mobile fix)
+  useEffect(() => {
+    if (!open) return;
+    if (!accion) return;
+    if (accion.usaTurno) {
+      setTimeout(() => {
+        importeRef.current?.focus();
+      }, 80);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, accionId]);
 
   // Cerrar con ESC (PC) + bloquear scroll fondo
   useEffect(() => {
@@ -183,12 +205,11 @@ export default function MovimientoModal(props: {
   return (
     <div className="fixed inset-0 z-50">
       {/* Backdrop */}
-      <button
-        type="button"
-        aria-label="Cerrar"
-        className="absolute inset-0 bg-black/40"
-        onClick={onClose}
-      />
+      <div
+  aria-hidden="true"
+  className="absolute inset-0 bg-black/40 z-0"
+  onClick={onClose}
+/>
 
       {/* Sheet */}
       <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md">
@@ -237,24 +258,34 @@ export default function MovimientoModal(props: {
                 ))}
               </select>
             </Field>
+
             <Field label="Importe" hint="Ej: 15000 o 15.000,50">
-  <input
-    type="text"
-    inputMode="decimal"
-    value={importe}
-    onChange={(e) => {
-      const v = e.target.value.replace(/[^\d.,]/g, "");
-      setImporte(v);
-    }}
-    placeholder="0"
-    className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
-    disabled={saving}
-  />
-</Field>
+              <input
+                ref={importeRef}
+                type="text"
+                autoComplete="off"
+                value={importe}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/[^\d.,]/g, "");
+                  setImporte(v);
+                }}
+                placeholder="0"
+                className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+                disabled={saving}
+              />
+            </Field>
 
             {accion?.usaTurno && (
               <Field label="Turno">
-                <select value={turno} onChange={(e) => setTurno(e.target.value as any)}>
+                <select
+                  value={turno}
+                  onChange={(e) => {
+                    setTurno(e.target.value as any);
+                    setTimeout(() => {
+                      importeRef.current?.focus();
+                    }, 80);
+                  }}
+                >
                   <option value="">Seleccionar</option>
                   <option value="MANIANA">Mañana</option>
                   <option value="TARDE">Tarde</option>

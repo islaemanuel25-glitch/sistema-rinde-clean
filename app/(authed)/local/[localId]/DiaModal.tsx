@@ -36,6 +36,40 @@ function findByKeywords(list: AccionHoja[], keywords: string[], category?: Accio
   );
 }
 
+/**
+ * Turnos: en la práctica los nombres varían (ej: "Caja mañana", "Ventas mañana", "Turno Mañana", etc.).
+ * Esta función intenta varias combinaciones y prioriza categoria TURNO si existe.
+ */
+function findTurno(list: AccionHoja[], turno: "manana" | "tarde" | "noche") {
+  const variants =
+    turno === "manana"
+      ? [
+          ["turno", "mañana"],
+          ["turno", "manana"],
+          ["mañana"],
+          ["manana"],
+          ["ventas", "mañana"],
+          ["ventas", "manana"],
+          ["caja", "mañana"],
+          ["caja", "manana"],
+        ]
+      : turno === "tarde"
+      ? [["turno", "tarde"], ["tarde"], ["ventas", "tarde"], ["caja", "tarde"]]
+      : [["turno", "noche"], ["noche"], ["ventas", "noche"], ["caja", "noche"]];
+
+  // 1) Preferir categoria TURNO
+  for (const ks of variants) {
+    const hit = findByKeywords(list, ks, "TURNO");
+    if (hit) return hit;
+  }
+  // 2) Fallback: sin categoria (por si lo cargaron mal)
+  for (const ks of variants) {
+    const hit = findByKeywords(list, ks);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function Field(props: { label: string; children: React.ReactNode; hint?: string }) {
   return (
     <div className="space-y-1">
@@ -53,7 +87,7 @@ export default function DiaModal(props: {
   onClose: () => void;
   onSaved: () => void;
   localId: string;
-  dateIso: string; // fecha fija del día clickeado
+  dateIso: string;
 }) {
   const { open, onClose, onSaved, localId, dateIso } = props;
 
@@ -78,20 +112,15 @@ export default function DiaModal(props: {
     setValues(json.values ?? {});
   }
 
-  // Mapeo Opción B (acciones distintas)
   const map = useMemo(() => {
-    // Turnos (por nombre)
-    const manana = findByKeywords(acciones, ["turno", "mañana"], "TURNO") ?? findByKeywords(acciones, ["turno", "manana"], "TURNO");
-    const tarde = findByKeywords(acciones, ["turno", "tarde"], "TURNO");
-    const noche = findByKeywords(acciones, ["turno", "noche"], "TURNO");
+    const manana = findTurno(acciones, "manana");
+    const tarde = findTurno(acciones, "tarde");
+    const noche = findTurno(acciones, "noche");
 
-    // Otros (por categoría + nombre)
     const electronico =
       findByKeywords(acciones, ["electron"], "ELECTRONICO") ?? findByKeywords(acciones, ["electronico"], "ELECTRONICO");
-    const deposito =
-      findByKeywords(acciones, ["deposit"], "DEPOSITO") ?? findByKeywords(acciones, ["deposito"], "DEPOSITO");
+    const deposito = findByKeywords(acciones, ["deposit"], "DEPOSITO") ?? findByKeywords(acciones, ["deposito"], "DEPOSITO");
 
-    // OTROS: virtual / david-eva
     const virtual = findByKeywords(acciones, ["virtual"], "OTROS");
     const davidEva =
       findByKeywords(acciones, ["david"], "OTROS") ??
@@ -102,7 +131,6 @@ export default function DiaModal(props: {
   }, [acciones]);
 
   const missingRequired = useMemo(() => {
-    // requeridos mínimos para que el sistema sea “usable”
     const miss: string[] = [];
     if (!map.manana) miss.push("Turno mañana");
     if (!map.tarde) miss.push("Turno tarde");
@@ -113,8 +141,10 @@ export default function DiaModal(props: {
 
   useEffect(() => {
     if (!open) return;
+
     setError(null);
     setLoading(true);
+
     (async () => {
       try {
         await fetchAcciones();
@@ -128,14 +158,33 @@ export default function DiaModal(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, localId, dateIso]);
 
+  // Scroll lock + ESC
+  useEffect(() => {
+    if (!open) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
 
   function getVal(action: AccionHoja | null) {
     if (!action) return "";
     return values[action.id] ?? "";
   }
+
   function setVal(action: AccionHoja | null, v: string) {
-    if (!action) return;
+    if (!action) return; // <- si no hay acción, NO hay dónde guardar
     setValues((prev) => ({ ...prev, [action.id]: v }));
   }
 
@@ -148,7 +197,6 @@ export default function DiaModal(props: {
         return;
       }
 
-      // armamos payload con solo acciones que existen
       const payload: Record<string, string> = {};
       for (const a of [map.manana, map.tarde, map.noche, map.electronico, map.deposito, map.virtual, map.davidEva]) {
         if (!a) continue;
@@ -174,10 +222,10 @@ export default function DiaModal(props: {
   }
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-[1000]">
       <button className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="Cerrar" />
 
-      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md">
+      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md z-[1001]">
         <div className="rounded-t-3xl border border-slate-200 bg-white shadow-2xl">
           <div className="flex justify-center pt-2">
             <div className="h-1.5 w-12 rounded-full bg-slate-200" />
@@ -205,44 +253,55 @@ export default function DiaModal(props: {
               </div>
             )}
 
+            {missingRequired.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                Acciones faltantes: {missingRequired.join(", ")}. (Por eso Turnos puede “no escribir”)
+              </div>
+            )}
+
             {/* Ventas */}
             <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
               <div className="text-sm font-extrabold text-slate-900">Ventas por turno</div>
 
-              <Field label="Turno mañana">
+              <Field label="Turno mañana" hint={!map.manana ? "No configurado (acción TURNO mañana no encontrada)" : undefined}>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={getVal(map.manana)}
-                  onChange={(e) => setVal(map.manana, e.target.value)}
-                  inputMode="decimal"
-                  placeholder="0"
+                  type="text"
+                  value={map.manana ? getVal(map.manana) : ""}
+                  onChange={
+                    map.manana
+                      ? (e) => setVal(map.manana, e.target.value.replace(/[^\d.,]/g, ""))
+                      : undefined
+                  }
+                  placeholder={!map.manana ? "Configurar acción TURNO mañana" : "0"}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+                  disabled={saving || !map.manana}
                 />
               </Field>
 
-              <Field label="Turno tarde">
+              <Field label="Turno tarde" hint={!map.tarde ? "No configurado (acción TURNO tarde no encontrada)" : undefined}>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={getVal(map.tarde)}
-                  onChange={(e) => setVal(map.tarde, e.target.value)}
-                  inputMode="decimal"
-                  placeholder="0"
+                  type="text"
+                  value={map.tarde ? getVal(map.tarde) : ""}
+                  onChange={
+                    map.tarde
+                      ? (e) => setVal(map.tarde, e.target.value.replace(/[^\d.,]/g, ""))
+                      : undefined
+                  }
+                  placeholder={!map.tarde ? "Configurar acción TURNO tarde" : "0"}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+                  disabled={saving || !map.tarde}
                 />
               </Field>
 
               {map.noche && (
                 <Field label="Turno noche" hint="Solo si el local tiene noche">
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
                     value={getVal(map.noche)}
-                    onChange={(e) => setVal(map.noche, e.target.value)}
-                    inputMode="decimal"
+                    onChange={(e) => setVal(map.noche, e.target.value.replace(/[^\d.,]/g, ""))}
                     placeholder="0"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+                    disabled={saving}
                   />
                 </Field>
               )}
@@ -252,15 +311,18 @@ export default function DiaModal(props: {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
               <div className="text-sm font-extrabold text-slate-900">Cobros</div>
 
-              <Field label="Pagos electrónicos">
+              <Field label="Pagos electrónicos" hint={!map.electronico ? "No configurado" : undefined}>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={getVal(map.electronico)}
-                  onChange={(e) => setVal(map.electronico, e.target.value)}
-                  inputMode="decimal"
+                  type="text"
+                  value={map.electronico ? getVal(map.electronico) : ""}
+                  onChange={
+                    map.electronico
+                      ? (e) => setVal(map.electronico, e.target.value.replace(/[^\d.,]/g, ""))
+                      : undefined
+                  }
                   placeholder="0"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+                  disabled={saving || !map.electronico}
                 />
               </Field>
             </div>
@@ -269,28 +331,30 @@ export default function DiaModal(props: {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
               <div className="text-sm font-extrabold text-slate-900">Pagos / costos</div>
 
-              <Field label="Depósito">
+              <Field label="Depósito" hint={!map.deposito ? "No configurado" : undefined}>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={getVal(map.deposito)}
-                  onChange={(e) => setVal(map.deposito, e.target.value)}
-                  inputMode="decimal"
+                  type="text"
+                  value={map.deposito ? getVal(map.deposito) : ""}
+                  onChange={
+                    map.deposito
+                      ? (e) => setVal(map.deposito, e.target.value.replace(/[^\d.,]/g, ""))
+                      : undefined
+                  }
                   placeholder="0"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+                  disabled={saving || !map.deposito}
                 />
               </Field>
 
               {map.virtual && (
                 <Field label="Virtual">
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
                     value={getVal(map.virtual)}
-                    onChange={(e) => setVal(map.virtual, e.target.value)}
-                    inputMode="decimal"
+                    onChange={(e) => setVal(map.virtual, e.target.value.replace(/[^\d.,]/g, ""))}
                     placeholder="0"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+                    disabled={saving}
                   />
                 </Field>
               )}
@@ -298,13 +362,12 @@ export default function DiaModal(props: {
               {map.davidEva && (
                 <Field label="David / Eva" hint="Solo en ese local">
                   <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                    type="text"
                     value={getVal(map.davidEva)}
-                    onChange={(e) => setVal(map.davidEva, e.target.value)}
-                    inputMode="decimal"
+                    onChange={(e) => setVal(map.davidEva, e.target.value.replace(/[^\d.,]/g, ""))}
                     placeholder="0"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+                    disabled={saving}
                   />
                 </Field>
               )}

@@ -8,19 +8,14 @@ export async function GET(_: Request, { params }: { params: { localId: string } 
 
   const { localId, userId } = (gate.ctx as any) ?? {};
 
-  // ✅ Permitir lectura a ADMIN / OPERATIVO / LECTURA
-  // (no bloqueamos acá; solo aseguramos que exista el userLocal activo)
   if (userId) {
     const ul = await prisma.userLocal.findFirst({
       where: { userId, localId, isActive: true, local: { isActive: true } },
       select: { rol: true },
     });
-    if (!ul) {
-      return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
-    }
+    if (!ul) return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
   }
 
-  // Traemos catálogo + override por local, y devolvemos SOLO habilitadas
   const acciones = await prisma.accion.findMany({
     where: { isActive: true },
     orderBy: [{ categoria: "asc" }, { nombre: "asc" }],
@@ -66,7 +61,7 @@ export async function GET(_: Request, { params }: { params: { localId: string } 
       };
     })
     .filter((x) => x.isEnabled)
-    .filter((x) => x.categoria !== "SOCIO"); // defensivo
+    .filter((x) => x.categoria !== "SOCIO");
 
   return NextResponse.json({ ok: true, acciones: out });
 }
