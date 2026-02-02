@@ -221,6 +221,30 @@ export default function DiaModal(props: {
     }
   }
 
+  async function vaciarDia() {
+    if (!window.confirm("¿Eliminar todos los movimientos del día?")) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/local/${localId}/api/movimientos?fecha=${dateIso}`, {
+        method: "DELETE",
+      });
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.ok) {
+        setError(json?.error ?? "No se pudo eliminar");
+        return;
+      }
+
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[1000]">
       <button className="absolute inset-0 bg-black/40" onClick={onClose} aria-label="Cerrar" />
@@ -263,6 +287,19 @@ export default function DiaModal(props: {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
               <div className="text-sm font-extrabold text-slate-900">Ventas por turno</div>
 
+              {map.noche && (
+                <Field label="Turno noche" hint="Solo si el local tiene noche">
+                  <input
+                    type="text"
+                    value={getVal(map.noche)}
+                    onChange={(e) => setVal(map.noche, e.target.value.replace(/[^\d.,]/g, ""))}
+                    placeholder="0"
+                    className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
+                    disabled={saving}
+                  />
+                </Field>
+              )}
+
               <Field label="Turno mañana" hint={!map.manana ? "No configurado (acción TURNO mañana no encontrada)" : undefined}>
                 <input
                   type="text"
@@ -292,19 +329,6 @@ export default function DiaModal(props: {
                   disabled={saving || !map.tarde}
                 />
               </Field>
-
-              {map.noche && (
-                <Field label="Turno noche" hint="Solo si el local tiene noche">
-                  <input
-                    type="text"
-                    value={getVal(map.noche)}
-                    onChange={(e) => setVal(map.noche, e.target.value.replace(/[^\d.,]/g, ""))}
-                    placeholder="0"
-                    className="w-full rounded-xl border border-slate-200 px-3 py-3 text-base"
-                    disabled={saving}
-                  />
-                </Field>
-              )}
             </div>
 
             {/* Cobros */}
@@ -380,7 +404,7 @@ export default function DiaModal(props: {
             )}
           </div>
 
-          <div className="absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white/95 backdrop-blur px-4 py-3">
+          <div className="absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white/95 backdrop-blur px-4 py-3 space-y-2">
             <button
               className={cn(
                 "w-full rounded-2xl px-4 py-3 text-base font-extrabold shadow-sm",
@@ -390,6 +414,18 @@ export default function DiaModal(props: {
               disabled={saving}
             >
               {saving ? "Guardando…" : "Guardar día"}
+            </button>
+            <button
+              className={cn(
+                "w-full rounded-2xl border px-4 py-3 text-base font-extrabold shadow-sm",
+                saving
+                  ? "border-slate-200 bg-slate-50 text-slate-400"
+                  : "border-rose-200 bg-rose-50 text-rose-700"
+              )}
+              onClick={vaciarDia}
+              disabled={saving}
+            >
+              Vaciar día
             </button>
           </div>
         </div>

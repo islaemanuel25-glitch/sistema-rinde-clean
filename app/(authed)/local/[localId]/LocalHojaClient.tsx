@@ -44,6 +44,32 @@ function parseNumber(s: string) {
   return isFinite(n) ? n : 0;
 }
 
+function formatDmY(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+function isoToDmy(iso: string): { day: number; month: number; year: number } {
+  const d = new Date(`${iso}T00:00:00`);
+  return {
+    day: d.getDate(),
+    month: d.getMonth() + 1,
+    year: d.getFullYear(),
+  };
+}
+
+function dmyToIso(day: number, month: number, year: number): string {
+  const d = new Date(year, month - 1, day);
+  return d.toISOString().slice(0, 10);
+}
+
 function startOfWeekSundayIso(iso: string) {
   const d = new Date(`${iso}T00:00:00`);
   const day = d.getDay(); // 0=Dom
@@ -203,6 +229,10 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
   const [userPickedPresetKey, setUserPickedPresetKey] = useState<string | null>(null);
   const [lastAppliedKey, setLastAppliedKey] = useState<string | null>(null);
 
+  // Estado para SocioConfig
+  const [socioEnabled, setSocioEnabled] = useState(false);
+  const [socioPct, setSocioPct] = useState(0);
+
   const [hideZero, setHideZero] = useState(true);
 
   // Modal día
@@ -271,9 +301,27 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
     else setPresets([]);
   }
 
+  async function fetchSocioConfig() {
+    try {
+      const res = await fetch(`/local/${localId}/api/socio-config`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => null);
+
+      if (res.ok && json?.ok) {
+        setSocioEnabled(json.socioConfig?.isEnabled ?? false);
+        setSocioPct(json.socioConfig?.pctSocio ?? 0); // Ya viene como 0..1
+      }
+    } catch (e: any) {
+      // Silenciar error, usar defaults
+    }
+  }
+
   useEffect(() => {
     fetchHoja();
     fetchFiltros();
+    fetchSocioConfig();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localId]);
 
@@ -383,23 +431,32 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
   }, [visibleDaysRaw, hideZero]);
 
   const headerLabel = useMemo(() => {
-    if (scope === "day") return `Día ${date}`;
-    if (scope === "week") return `Semana (Dom→Sáb) base ${date}`;
-    if (scope === "month") return `Mes (negocio) base ${date}`;
-    if (scope === "monthcal") return `Mes calendario base ${date}`;
+    if (scope === "day") return `Día ${formatDmY(date)}`;
+    if (scope === "week") return `Semana (Dom→Sáb) base ${formatDmY(date)}`;
+    if (scope === "month") return `Mes (negocio) base ${formatDmY(date)}`;
+    if (scope === "monthcal") return `Mes calendario base ${formatDmY(date)}`;
     return "Todo";
   }, [scope, date]);
 
   const topSummary = useMemo(() => {
-    let e = 0, s = 0, n = 0, i = 0;
+    let e = 0, s = 0, n = 0;
     for (const d of visibleDays) {
       e += d.resumen.totalEntradas;
       s += d.resumen.totalSalidas;
       n += d.resumen.totalNeto;
-      i += d.resumen.totalImpacta;
     }
-    return { e, s, n, i };
+    return { e, s, n };
   }, [visibleDays]);
+
+  // Calcular reparto con socio
+  const repartoSocio = useMemo(() => {
+    if (!socioEnabled || socioPct <= 0) {
+      return { socioMonto: 0, duenioMonto: topSummary.n };
+    }
+    const socioMonto = topSummary.n * socioPct;
+    const duenioMonto = topSummary.n - socioMonto;
+    return { socioMonto, duenioMonto };
+  }, [socioEnabled, socioPct, topSummary.n]);
 
   const weeks = useMemo(() => {
     if (scope === "day") return null;
@@ -425,6 +482,7 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
           onClick={() => {
             fetchHoja();
             fetchFiltros();
+            fetchSocioConfig();
           }}
           disabled={loading}
         >
@@ -440,21 +498,96 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
         <Card>
           <div className="px-4 pt-4 pb-3">
             <div className="text-sm font-semibold text-slate-900">Fecha base</div>
-            {lastMovimientoDate && <div className="mt-0.5 text-xs text-slate-500">Último movimiento: {lastMovimientoDate}</div>}
+            {lastMovimientoDate && <div className="mt-0.5 text-xs text-slate-500">Último movimiento: {formatDmY(lastMovimientoDate)}</div>}
           </div>
           <div className="px-4 pb-4">
-            <div className="flex items-center gap-2">
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-              <button onClick={() => setDate(new Date().toISOString().slice(0, 10))} className="shrink-0 font-semibold">
-                Hoy
-              </button>
-            </div>
+            {scope === "day" ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="flex-1"
+                />
+                <button
+                  onClick={() => setDate(new Date().toISOString().slice(0, 10))}
+                  className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold shadow-sm"
+                >
+                  Hoy
+                </button>
+              </div>
+            ) : (
+              (() => {
+                const { day, month, year } = isoToDmy(date);
+                const currentYear = new Date().getFullYear();
+                const years = Array.from({ length: 7 }, (_, i) => currentYear - 5 + i);
+                const months = Array.from({ length: 12 }, (_, i) => i + 1);
+                const days = Array.from({ length: daysInMonth(year, month) }, (_, i) => i + 1);
+
+                return (
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={day}
+                      onChange={(e) => {
+                        const newDay = Number(e.target.value);
+                        setDate(dmyToIso(newDay, month, year));
+                      }}
+                      className="flex-1"
+                    >
+                      {days.map((d) => (
+                        <option key={d} value={d}>
+                          {String(d).padStart(2, "0")}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={month}
+                      onChange={(e) => {
+                        const newMonth = Number(e.target.value);
+                        const maxDay = daysInMonth(year, newMonth);
+                        const newDay = Math.min(day, maxDay);
+                        setDate(dmyToIso(newDay, newMonth, year));
+                      }}
+                      className="flex-1"
+                    >
+                      {months.map((m) => (
+                        <option key={m} value={m}>
+                          {String(m).padStart(2, "0")}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={year}
+                      onChange={(e) => {
+                        const newYear = Number(e.target.value);
+                        const maxDay = daysInMonth(newYear, month);
+                        const newDay = Math.min(day, maxDay);
+                        setDate(dmyToIso(newDay, month, newYear));
+                      }}
+                      className="flex-1"
+                    >
+                      {years.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setDate(new Date().toISOString().slice(0, 10))}
+                      className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold shadow-sm"
+                    >
+                      Hoy
+                    </button>
+                  </div>
+                );
+              })()
+            )}
           </div>
         </Card>
       )}
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className={cn("grid gap-2", socioEnabled && socioPct > 0 ? "grid-cols-5" : "grid-cols-3")}>
         <Card>
           <div className="p-4">
             <div className="text-xs font-medium text-slate-500">Entradas</div>
@@ -473,12 +606,22 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
             <div className="mt-1 text-2xl font-extrabold text-slate-900">{money(topSummary.n)}</div>
           </div>
         </Card>
-        <Card>
-          <div className="p-4">
-            <div className="text-xs font-medium text-slate-500">Impacta</div>
-            <div className="mt-1 text-2xl font-extrabold text-slate-900">{money(topSummary.i)}</div>
-          </div>
-        </Card>
+        {socioEnabled && socioPct > 0 && (
+          <>
+            <Card>
+              <div className="p-4">
+                <div className="text-xs font-medium text-slate-500">Socio</div>
+                <div className="mt-1 text-2xl font-extrabold text-slate-700">{money(repartoSocio.socioMonto)}</div>
+              </div>
+            </Card>
+            <Card>
+              <div className="p-4">
+                <div className="text-xs font-medium text-slate-500">Dueño</div>
+                <div className="mt-1 text-2xl font-extrabold text-slate-700">{money(repartoSocio.duenioMonto)}</div>
+              </div>
+            </Card>
+          </>
+        )}
       </div>
 
       {/* Filtro */}
@@ -542,7 +685,7 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
           </div>
         )}
 
-        {/* DAY: lista como antes */}
+        {/* DAY: lista compacta */}
         {scope === "day" &&
           visibleDays.map((d) => (
             <Card key={d.date}>
@@ -552,49 +695,53 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
               >
                 <div className="px-4 pt-4 pb-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-base font-extrabold text-slate-900">{d.date}</div>
+                    <div className="text-base font-extrabold text-slate-900">{formatDmY(d.date)}</div>
                     <Chip variant="soft">Neto {money(d.resumen.totalNeto)}</Chip>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
                     <span>Entradas: {money(d.resumen.totalEntradas)}</span>
                     <span>•</span>
                     <span>Salidas: {money(d.resumen.totalSalidas)}</span>
-                    <span>•</span>
-                    <span>Impacta: {money(d.resumen.totalImpacta)}</span>
                   </div>
+                  {socioEnabled && socioPct > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-600">
+                      <span>Socio: {money(d.resumen.totalNeto * socioPct)}</span>
+                      <span>•</span>
+                      <span>Dueño: {money(d.resumen.totalNeto * (1 - socioPct))}</span>
+                    </div>
+                  )}
                   <div className="mt-2 text-xs font-semibold text-slate-600">Tocá para cargar/editar el día</div>
                 </div>
               </button>
 
-              <div className="px-4 pb-4 space-y-2">
-                {d.movimientos.map((m) => {
-                  const imp = parseNumber(m.importe);
-                  const isIn = m.tipo === "ENTRADA";
+              <div className="px-4 pb-4">
+                <div className="space-y-1">
+                  {d.movimientos.map((m) => {
+                    const imp = parseNumber(m.importe);
+                    const isIn = m.tipo === "ENTRADA";
 
-                  return (
-                    <div key={m.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-[15px] font-extrabold text-slate-900">{m.accionNombre}</div>
-
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <Chip variant={isIn ? "in" : "out"}>{isIn ? "ENTRADA" : "SALIDA"}</Chip>
-                            <Chip variant="neutral">{m.impactaTotal ? "Impacta" : "No impacta"}</Chip>
-                            {m.turno && <Chip variant="neutral">{m.turno}</Chip>}
-                            {m.nombre && <Chip variant="neutral">{m.nombre}</Chip>}
-                          </div>
+                    return (
+                      <div key={m.id} className="flex items-center justify-between gap-3 py-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-slate-900">{m.accionNombre}</div>
+                          {(m.turno || m.nombre) && (
+                            <div className="mt-0.5 text-xs text-slate-500">
+                              {m.turno && <span>{m.turno}</span>}
+                              {m.turno && m.nombre && <span> • </span>}
+                              {m.nombre && <span>{m.nombre}</span>}
+                            </div>
+                          )}
                         </div>
-
-                        <div className="text-right">
-                          <div className={cn("text-2xl font-extrabold", isIn ? "text-emerald-700" : "text-rose-700")}>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className={cn("text-lg font-extrabold whitespace-nowrap", isIn ? "text-emerald-700" : "text-rose-700")}>
                             {isIn ? "+" : "-"}
                             {money(imp)}
                           </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </Card>
           ))}
@@ -605,9 +752,9 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
             <div className="px-4 pt-4 pb-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="text-base font-extrabold text-slate-900">
-                  Semana {w.start} → {w.end}
+                  Semana {formatDmY(w.start)} → {formatDmY(w.end)}
                 </div>
-                <Chip variant="soft">Impacta {money(w.resumen.i)}</Chip>
+                <Chip variant="soft">Neto {money(w.resumen.n)}</Chip>
               </div>
               <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
                 <span>Entradas: {money(w.resumen.e)}</span>
@@ -629,13 +776,13 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <div className="text-sm font-extrabold text-slate-900">{d.date}</div>
+                        <div className="text-sm font-extrabold text-slate-900">{formatDmY(d.date)}</div>
                         <div className="mt-1 text-xs text-slate-500">
                           Entradas {money(d.resumen.totalEntradas)} · Salidas {money(d.resumen.totalSalidas)}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-lg font-extrabold text-slate-900">{money(d.resumen.totalImpacta)}</div>
+                        <div className="text-lg font-extrabold text-slate-900">{money(d.resumen.totalNeto)}</div>
                         <div className="text-[11px] font-semibold text-slate-600">Tocar para cargar</div>
                       </div>
                     </div>
@@ -656,6 +803,7 @@ export default function LocalHojaClient({ localId }: { localId: string }) {
           setOpenDay(false);
           fetchHoja();
           fetchFiltros();
+          fetchSocioConfig();
         }}
       />
 

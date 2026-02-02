@@ -64,7 +64,7 @@ export async function POST(
     );
   }
 
-  const { fecha, accionId, importe, turno, nombre } = parsed.data;
+  const { fecha, accionId, importe, turno, nombre: nombreRaw } = parsed.data;
 
   if (!isPositiveDecimalString(importe)) {
     return NextResponse.json(
@@ -141,7 +141,9 @@ export async function POST(
     );
   }
 
-  if (usaNombre && (!nombre || !nombre.trim())) {
+  const nombre = nombreRaw?.trim() ?? null;
+
+  if (usaNombre && !nombre) {
     return NextResponse.json(
       { ok: false, error: "Falta nombre" },
       { status: 400 }
@@ -156,7 +158,7 @@ export async function POST(
       tipo,
       importe: importeFinal,
       turno: usaTurno ? turno! : null,
-      nombre: usaNombre ? nombre.trim() : null,
+      nombre: usaNombre ? nombre : null,
       socioId: null,
       createdByUserId: userId,
     },
@@ -164,4 +166,81 @@ export async function POST(
   });
 
   return NextResponse.json({ ok: true, id: created.id });
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: { localId: string } }
+) {
+  const gate = await requireLocalContextApi(params.localId);
+  if (!gate.ok) return gate.res;
+
+  const { localId, rol } = gate.ctx;
+
+  // Rol LECTURA no puede borrar
+  if (rol === "LECTURA") {
+    return NextResponse.json(
+      { ok: false, error: "FORBIDDEN_ROLE" },
+      { status: 403 }
+    );
+  }
+
+  const url = new URL(req.url);
+  const fecha = url.searchParams.get("fecha");
+  const id = url.searchParams.get("id");
+
+  // Modo A: Vaciar día completo
+  if (fecha) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return NextResponse.json(
+        { ok: false, error: "Fecha inválida" },
+        { status: 400 }
+      );
+    }
+
+    const start = new Date(`${fecha}T00:00:00`);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
+    const result = await prisma.movimiento.deleteMany({
+      where: {
+        localId,
+        fecha: {
+          gte: start,
+          lt: end,
+        },
+      },
+    });
+
+    return NextResponse.json({ ok: true, count: result.count });
+  }
+
+  // Modo B: Borrar por ID
+  if (id) {
+    const movimiento = await prisma.movimiento.findFirst({
+      where: {
+        id,
+        localId,
+      },
+      select: { id: true },
+    });
+
+    if (!movimiento) {
+      return NextResponse.json(
+        { ok: false, error: "Movimiento no encontrado" },
+        { status: 404 }
+      );
+    }
+
+    await prisma.movimiento.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ ok: true });
+  }
+
+  return NextResponse.json(
+    { ok: false, error: "Falta fecha o id" },
+    { status: 400 }
+  );
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/src/lib/db";
 import { requireLocalContextApi } from "@/app/lib/rinde/requireLocalContext";
+import { ensureAccionesHoja } from "./ensure/route";
 
 export async function GET(_: Request, { params }: { params: { localId: string } }) {
   const gate = await requireLocalContextApi(params.localId);
@@ -16,51 +17,52 @@ export async function GET(_: Request, { params }: { params: { localId: string } 
     if (!ul) return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
   }
 
-  const acciones = await prisma.accion.findMany({
-    where: { isActive: true },
-    orderBy: [{ categoria: "asc" }, { nombre: "asc" }],
-    select: {
-      id: true,
-      nombre: true,
-      categoria: true,
-      tipoDefault: true,
-      impactaTotalDefault: true,
-      usaTurno: true,
-      usaNombre: true,
-      locales: {
-        where: { localId },
+  // Asegurar AccionLocal existe antes de consultar
+  await ensureAccionesHoja(localId);
+
+  // Query: solo habilitadas y activas
+  const accionesLocal = await prisma.accionLocal.findMany({
+    where: {
+      localId,
+      isEnabled: true,
+      accion: { isActive: true },
+    },
+    include: {
+      accion: {
         select: {
-          isEnabled: true,
-          tipoOverride: true,
-          impactaTotal: true,
-          usaTurnoOverride: true,
-          usaNombreOverride: true,
+          id: true,
+          nombre: true,
+          categoria: true,
+          tipoDefault: true,
+          impactaTotalDefault: true,
+          usaTurno: true,
+          usaNombre: true,
         },
       },
     },
+    orderBy: [{ orden: "asc" }, { accion: { nombre: "asc" } }],
   });
 
-  const out = acciones
-    .map((a) => {
-      const al = a.locales[0] ?? null;
+  const out = accionesLocal
+    .map((al) => {
+      const accion = al.accion;
 
-      const tipo = (al?.tipoOverride ?? a.tipoDefault) as "ENTRADA" | "SALIDA";
-      const impactaTotal = al?.impactaTotal ?? a.impactaTotalDefault;
-      const usaTurno = al?.usaTurnoOverride ?? a.usaTurno;
-      const usaNombre = al?.usaNombreOverride ?? a.usaNombre;
+      const tipo = (al.tipoOverride ?? accion.tipoDefault) as "ENTRADA" | "SALIDA";
+      const impactaTotal = al.impactaTotal;
+      const usaTurno = al.usaTurnoOverride ?? accion.usaTurno;
+      const usaNombre = al.usaNombreOverride ?? accion.usaNombre;
 
       return {
-        id: a.id,
-        nombre: a.nombre,
-        categoria: a.categoria,
+        id: accion.id,
+        nombre: accion.nombre,
+        categoria: accion.categoria,
         tipo,
         impactaTotal,
         usaTurno,
         usaNombre,
-        isEnabled: al?.isEnabled ?? true,
+        isEnabled: true, // ya filtrado por isEnabled: true
       };
     })
-    .filter((x) => x.isEnabled)
     .filter((x) => x.categoria !== "SOCIO");
 
   return NextResponse.json({ ok: true, acciones: out });

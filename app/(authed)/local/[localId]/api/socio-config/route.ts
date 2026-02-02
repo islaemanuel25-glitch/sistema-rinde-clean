@@ -1,67 +1,114 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/src/lib/db";
 import { requireLocalContextApi } from "@/app/lib/rinde/requireLocalContext";
+import { z } from "zod";
+import { Prisma } from "@prisma/client";
 
-// En UI se usa 50..100. En DB guardamos 0..1.
-function toDbPct(uiPct: number) {
-  return uiPct / 100;
-}
+const PatchBodySchema = z.object({
+  isEnabled: z.boolean().optional(),
+  pctSocio: z.number().min(0).max(100).optional(), // UI manda 0..100
+});
 
-function toUiPct(dbPct: number) {
-  return Math.round(dbPct * 100);
-}
-
-export async function GET(req: NextRequest, { params }: { params: { localId: string } }) {
+export async function GET(_: Request, { params }: { params: { localId: string } }) {
   const gate = await requireLocalContextApi(params.localId);
   if (!gate.ok) return gate.res;
+
   const { localId } = gate.ctx;
 
-  const row = await prisma.socioConfig.findUnique({
+  // Buscar socioConfig, si no existe crear con defaults
+  let socioConfig = await prisma.socioConfig.findUnique({
     where: { localId },
     select: { isEnabled: true, pctSocio: true },
   });
 
+  if (!socioConfig) {
+    socioConfig = await prisma.socioConfig.create({
+      data: {
+        localId,
+        isEnabled: false,
+        pctSocio: new Prisma.Decimal(0),
+      },
+      select: { isEnabled: true, pctSocio: true },
+    });
+  }
+
+  // pctSocio en DB es Decimal 0..1
+  const pctSocioNum = Number(socioConfig.pctSocio);
+
   return NextResponse.json({
     ok: true,
-    item: row
-      ? { isEnabled: row.isEnabled, pctSocio: toUiPct(Number(row.pctSocio)) }
-      : { isEnabled: false, pctSocio: 50 },
+    socioConfig: {
+      isEnabled: socioConfig.isEnabled,
+      pctSocio: pctSocioNum, // 0..1
+    },
   });
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { localId: string } }) {
+export async function PATCH(
+  req: Request,
+  { params }: { params: { localId: string } }
+) {
   const gate = await requireLocalContextApi(params.localId);
   if (!gate.ok) return gate.res;
+
   const { localId, rol } = gate.ctx;
 
-  // Solo ADMIN puede cambiar configuración
-  if (rol !== "ADMIN") {
-    return NextResponse.json({ ok: false, error: "FORBIDDEN_ROLE" }, { status: 403 });
+  // Rol LECTURA no puede modificar
+  if (rol === "LECTURA") {
+    return NextResponse.json(
+      { ok: false, error: "FORBIDDEN_ROLE" },
+      { status: 403 }
+    );
   }
 
   const body = await req.json().catch(() => null);
-  if (!body || typeof body.isEnabled !== "boolean" || typeof body.pctSocio !== "number") {
-    return NextResponse.json({ ok: false, error: "BAD_REQUEST" }, { status: 400 });
+  if (!body) {
+    return NextResponse.json(
+      { ok: false, error: "INVALID_BODY" },
+      { status: 400 }
+    );
   }
 
-  const uiPct = body.pctSocio;
-
-  // Permitimos 1..99 (o 0..100 si querés). Acá dejo 1..99 para que tenga sentido.
-  if (!Number.isFinite(uiPct) || uiPct < 1 || uiPct > 99) {
-    return NextResponse.json({ ok: false, error: "PCT_INVALID" }, { status: 400 });
+  const parsed = PatchBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { ok: false, error: "INVALID_BODY" },
+      { status: 400 }
+    );
   }
 
-  const dbPct = toDbPct(uiPct);
+  const { isEnabled, pctSocio } = parsed.data;
 
-  const saved = await prisma.socioConfig.upsert({
+  // Preparar data para upsert (DB guarda 0..1 como Decimal)
+  const updateData: {
+    isEnabled?: boolean;
+    pctSocio?: Prisma.Decimal;
+  } = {};
+
+  if (isEnabled !== undefined) {
+    updateData.isEnabled = isEnabled;
+  }
+
+  if (pctSocio !== undefined) {
+    // pctSocio viene 0..100 (UI) => guardar 0..1 (DB)
+    if (pctSocio < 0 || pctSocio > 100) {
+      return NextResponse.json(
+        { ok: false, error: "INVALID_PCT_SOCIO" },
+        { status: 400 }
+      );
+    }
+    updateData.pctSocio = new Prisma.Decimal(pctSocio / 100);
+  }
+
+  await prisma.socioConfig.upsert({
     where: { localId },
-    create: { localId, isEnabled: body.isEnabled, pctSocio: String(dbPct) },
-    update: { isEnabled: body.isEnabled, pctSocio: String(dbPct) },
-    select: { isEnabled: true, pctSocio: true },
+    create: {
+      localId,
+      isEnabled: updateData.isEnabled ?? false,
+      pctSocio: updateData.pctSocio ?? new Prisma.Decimal(0),
+    },
+    update: updateData,
   });
 
-  return NextResponse.json({
-    ok: true,
-    item: { isEnabled: saved.isEnabled, pctSocio: toUiPct(Number(saved.pctSocio)) },
-  });
+  return NextResponse.json({ ok: true });
 }
